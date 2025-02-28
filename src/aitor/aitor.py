@@ -1,5 +1,4 @@
-from abc import ABC, abstractmethod
-from typing import Generic, TypeVar, Any, Optional
+from typing import Generic, TypeVar, Any, Optional, Callable
 import asyncio
 import uuid
 import concurrent.futures
@@ -12,7 +11,7 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-class Aitor(Generic[T], ABC):
+class Aitor(Generic[T]):
     # Class-level thread pool for all aitors
     _thread_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=16, thread_name_prefix="AitorThread"  # Adjust based on your needs
@@ -26,6 +25,7 @@ class Aitor(Generic[T], ABC):
         initial_memory: T,
         aitor_id: Optional[str] = None,
         name: Optional[str] = None,
+        on_receive_handler: Optional[Callable[[Any], Any]] = None,
     ):
         """
         Initialize aitor with either new or persisted memory.
@@ -35,12 +35,14 @@ class Aitor(Generic[T], ABC):
             initial_memory: The initial memory for this aitor
             aitor_id: Optional identifier to retrieve persisted memory
             name: Optional name for better identification
+            on_receive_handler: Optional function to handle incoming messages
         """
         self._id: str = aitor_id or str(uuid.uuid4())
         self._name: Optional[str] = name
         self._memory: T = initial_memory
         self._workflow: Optional[Aitorflow] = None
         self._lock = threading.Lock()  # Add lock for thread-safe memory access
+        self._on_receive_handler = on_receive_handler
 
     @property
     def id(self) -> str:
@@ -95,7 +97,7 @@ class Aitor(Generic[T], ABC):
     def _load_memory(self, aitor_id: str) -> T:
         """
         Load persisted memory for this aitor.
-        Must be implemented by concrete aitors.
+        Can be overridden by subclasses.
 
         Args:
             aitor_id: The identifier for the persisted memory
@@ -104,24 +106,23 @@ class Aitor(Generic[T], ABC):
         """
         pass
 
-    @abstractmethod
     async def on_receive(self, message: Any):
         """
         Handle incoming messages and orchestrate tasks.
-        Must be implemented by concrete aitors.
         
-        If a workflow is attached, it will be executed with the received message
-        as input by default.
+        If a custom handler is provided, it will be used.
+        If a workflow is attached, it will be executed with the received message.
 
         Args:
             message: The message to be processed
         Returns:
             Any: The result of processing the message
         """
-        # Base implementation that concrete classes can call via super()
-        if self._workflow:
-            return self._workflow.execute(message)
-        return None
+        if self._on_receive_handler:
+            return await self._on_receive_handler(message, self)
+        elif self._workflow:
+            return await asyncio.to_thread(self._workflow.execute, message)
+        return message
 
     async def ask(self, message: Any):
         """
@@ -199,7 +200,7 @@ class Aitor(Generic[T], ABC):
     def persist_memory(self, external_storage: Any):
         """
         Store the aitor's memory externally.
-        Must be implemented by persistant aitors.
+        Can be overridden by subclasses.
 
         Args:
             external_storage: The storage mechanism to persist memory

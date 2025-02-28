@@ -17,48 +17,115 @@ pip install aitor
 ## Quick Start
 ### Creating a Basic Aitor
 ```python
-from aitor import Aitor, Memory
+import asyncio
+from typing import List
+from aitor import Aitor
 
-class MyMemory(Memory):
-    value: int = 0
+async def text_processor_handler(message: str, aitor: Aitor[List[str]]):
+    # Store message in memory
+    current_memory = aitor.get_memory()
+    current_memory.append(message)
+    aitor.set_memory(current_memory)
+    
+    # Process the message
+    processed_msg = f"Processed: {message.upper()}"
+    print(f"[{aitor.name}] {processed_msg}")
+    
+    # If workflow is attached, run it with the message
+    if aitor.workflow:
+        return await asyncio.to_thread(aitor.workflow.execute, message)
+    
+    return processed_msg
 
-class MyAitor(Aitor[MyMemory]):
-    async def process(self, input_value: int):
-        self.memory.value += input_value
-        return self.memory.value
+async def main():
+    # Create an aitor directly
+    aitor = Aitor(
+        initial_memory=[],  # Start with empty list
+        name="TextAitor",
+        on_receive_handler=text_processor_handler
+    )
+    
+    # Use the blocking 'ask' method
+    result1 = await aitor.ask("Hello, world!")
+    print(f"Ask result: {result1}")
+    
+    # Use the non-blocking 'tell' method
+    aitor.tell("This is a non-blocking call")
+    
+    # Always shutdown when done
+    Aitor.shutdown()
 
-aitor = MyAitor()
-result = aitor.process(10)
-print(result)  # Output: 10
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### Building Workflows
 ```python
-from aitor import Task, Workflow
+from aitor.aitorflows import Aitorflow
+from aitor.task import task
 
-def task1():
-    return "Hello"
+# Define some tasks for a workflow
+@task
+def clean_text(text: str) -> str:
+    return text.strip()
 
-def task2(msg: str):
-    return f"{msg}, World!"
+@task
+def count_words(text: str) -> dict:
+    return {"word_count": len(text.split())}
 
-t1 = Task(task1)
-t2 = Task(task2, t1)
-workflow = Workflow(t1, t2)
+@task
+def analyze_sentiment(text: str) -> dict:
+    # Simple sentiment analysis
+    positive_words = ["good", "great", "excellent", "happy"]
+    negative_words = ["bad", "terrible", "sad", "unhappy"]
+    
+    score = 0
+    for word in text.lower().split():
+        if word in positive_words:
+            score += 1
+        elif word in negative_words:
+            score -= 1
+    
+    return {"sentiment_score": score}
 
-result = workflow.run()
-print(result)  # Output: "Hello, World!"
+# Create and define workflow
+workflow = Aitorflow(name="Text Analysis")
+clean = clean_text
+word_counter = count_words
+sentiment = analyze_sentiment
+
+# Define workflow dependencies
+clean >> [word_counter, sentiment]
+
+# Add tasks to workflow
+workflow.add_task(clean)
+workflow.add_task(word_counter)
+workflow.add_task(sentiment)
 ```
 
 ### Attaching Workflows to Aitors
 ```python
-class WorkflowAitor(Aitor[MyMemory]):
-    async def process(self):
-        return await workflow.run_async()
+async def main():
+    aitor = Aitor(
+        initial_memory=[],
+        name="TextAitor",
+        on_receive_handler=text_processor_handler
+    )
+    
+    # Attach workflow
+    aitor.attach_workflow(workflow)
+    
+    # Use 'ask' with the workflow
+    result2 = await aitor.ask("This is a great example!")
+    print(f"Workflow result: {result2}")
+    
+    # Check aitor's memory
+    print(f"Aitor memory: {aitor.get_memory()}")
+    
+    Aitor.shutdown()
 
-workflow_aitor = WorkflowAitor()
-result = workflow_aitor.process()
-print(result)
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ## Core Concepts
