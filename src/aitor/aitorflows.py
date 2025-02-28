@@ -94,23 +94,29 @@ class Aitorflow:
         # Validate input/output compatibility
         for task in self.tasks:
             if task.upstream_tasks:
-                # For tasks with multiple inputs, we need to ensure they can accept
-                # either individual arguments or a tuple of arguments
+                # Count required parameters
                 parameters = list(task.signature.parameters.values())
+                required_params = sum(1 for p in parameters 
+                                    if p.default == inspect.Parameter.empty and 
+                                    p.kind != inspect.Parameter.VAR_POSITIONAL)
+                has_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in parameters)
+                
+                # Check if parameter count matches upstream task count
                 if len(task.upstream_tasks) > 1:
-                    # If multiple upstream tasks, check if this task can accept
-                    # either multiple positional args or a tuple
-                    has_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in parameters)
-                    can_accept_single_tuple = (len(parameters) == 1 and
-                                              parameters[0].annotation != inspect.Signature.empty and
-                                              (parameters[0].annotation == tuple or 
-                                               getattr(parameters[0].annotation, '__origin__', None) == tuple))
-                    
-                    if not (has_var_positional or can_accept_single_tuple):
+                    if required_params < len(task.upstream_tasks) and not has_var_positional:
                         logger.warning(
                             f"Task {task.name} has {len(task.upstream_tasks)} upstream tasks "
-                            f"but doesn't have *args parameter or accept a single tuple"
+                            f"but only {required_params} required parameters. Make sure you have "
+                            f"enough parameters or *args to receive all inputs."
                         )
+                
+                # NEW CHECK: More required parameters than upstream tasks
+                if required_params > len(task.upstream_tasks) and not any(p.default != inspect.Parameter.empty for p in parameters):
+                    logger.warning(
+                        f"Task {task.name} has {required_params} required parameters "
+                        f"but only {len(task.upstream_tasks)} upstream tasks. Some parameters "
+                        f"may not receive values."
+                    )
         
         return True
     
@@ -171,14 +177,17 @@ class Aitorflow:
                             
                             if not remaining_deps[downstream]:
                                 # All upstream dependencies are completed
-                                # Gather inputs from all upstream tasks
-                                upstream_results = [results[up] for up in downstream.upstream_tasks]
+                                # Sort upstream tasks based on their position in the chain
+                                sorted_upstream = sorted(downstream.upstream_tasks, 
+                                                        key=lambda t: downstream.upstream_order[t])
+                                # Get results in the correct order
+                                upstream_results = [results[up] for up in sorted_upstream]
                                 
                                 if len(upstream_results) == 1:
                                     # Single input
                                     futures[executor.submit(downstream.execute, upstream_results[0])] = downstream
                                 else:
-                                    # Multiple inputs as tuple
+                                    # Multiple inputs in the correct order
                                     futures[executor.submit(downstream.execute, *upstream_results)] = downstream
                     
                     except Exception as e:

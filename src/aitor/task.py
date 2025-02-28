@@ -19,6 +19,7 @@ class Task:
         self.name = name or func.__name__
         self.upstream_tasks: List['Task'] = []
         self.downstream_tasks: List['Task'] = []
+        self.upstream_order = {}  # Maps task to position
         self.signature = inspect.signature(func)
         
     def __rshift__(self, other: Union['Task', List['Task']]) -> Union['Task', List['Task']]:
@@ -32,6 +33,7 @@ class Task:
         if isinstance(other, Task):
             self.downstream_tasks.append(other)
             other.upstream_tasks.append(self)
+            other.upstream_order[self] = len(other.upstream_tasks) - 1
             return other
         elif isinstance(other, list):
             for task in other:
@@ -39,6 +41,7 @@ class Task:
                     raise TypeError(f"Expected Task object, got {type(task)}")
                 self.downstream_tasks.append(task)
                 task.upstream_tasks.append(self)
+                task.upstream_order[self] = len(task.upstream_tasks) - 1
             return other
         else:
             raise TypeError(f"Cannot chain with object of type {type(other)}")
