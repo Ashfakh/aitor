@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aitor"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight AI workflow builder"
 authors = [{name = "Ashfakh", email = "ashfakhrithu@gmail.com"}]
 readme = "README.md"
