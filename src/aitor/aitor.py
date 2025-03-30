@@ -5,6 +5,7 @@ import concurrent.futures
 import threading
 import logging
 from aitor.aitorflows import Aitorflow
+from aitor.task import Task
 
 T = TypeVar("T")
 
@@ -25,7 +26,6 @@ class Aitor(Generic[T]):
         initial_memory: T,
         aitor_id: Optional[str] = None,
         name: Optional[str] = None,
-        on_receive_handler: Optional[Callable[[Any], Any]] = None,
     ):
         """
         Initialize aitor with either new or persisted memory.
@@ -35,14 +35,12 @@ class Aitor(Generic[T]):
             initial_memory: The initial memory for this aitor
             aitor_id: Optional identifier to retrieve persisted memory
             name: Optional name for better identification
-            on_receive_handler: Optional function to handle incoming messages
         """
         self._id: str = aitor_id or str(uuid.uuid4())
         self._name: Optional[str] = name
         self._memory: T = initial_memory
         self._workflow: Optional[Aitorflow] = None
         self._lock = threading.Lock()  # Add lock for thread-safe memory access
-        self._on_receive_handler = on_receive_handler
 
     @property
     def id(self) -> str:
@@ -87,6 +85,17 @@ class Aitor(Generic[T]):
             workflow: The workflow to attach
         """
         self._workflow = workflow
+
+    def create_workflow(self, root_task: Task) -> None:
+        """
+        Create a new Aitorflow.
+        
+        Args:
+            name: Optional name for the workflow
+        """
+        workflow = Aitorflow(name=self._name)
+        workflow.add_root(root_task)
+        self.attach_workflow(workflow)        
         
     def detach_workflow(self) -> None:
         """
@@ -110,7 +119,6 @@ class Aitor(Generic[T]):
         """
         Handle incoming messages and orchestrate tasks.
         
-        If a custom handler is provided, it will be used.
         If a workflow is attached, it will be executed with the received message.
 
         Args:
@@ -118,9 +126,7 @@ class Aitor(Generic[T]):
         Returns:
             Any: The result of processing the message
         """
-        if self._on_receive_handler:
-            return await self._on_receive_handler(message, self)
-        elif self._workflow:
+        if self._workflow:
             return await asyncio.to_thread(self._workflow.execute, message)
         return message
 
