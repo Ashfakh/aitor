@@ -15,11 +15,12 @@ logger = logging.getLogger(__name__)
 class Aitor(Generic[T]):
     # Class-level thread pool for all aitors
     _thread_pool = concurrent.futures.ThreadPoolExecutor(
-        max_workers=16, thread_name_prefix="AitorThread"  # Adjust based on your needs
+        max_workers=None,  # Let the system determine optimal number based on CPU count, Maybe make in an ENV variable
+        thread_name_prefix="AitorThread"
     )
-
-    # Class-level event loop for async operations
-    _loop = asyncio.new_event_loop()
+    
+    # Add a thread-local storage for event loops
+    _thread_local = threading.local()
 
     def __init__(
         self,
@@ -127,7 +128,8 @@ class Aitor(Generic[T]):
             Any: The result of processing the message
         """
         if self._workflow:
-            return await asyncio.to_thread(self._workflow.execute, message)
+            # Execute directly in the current thread since we're already in a thread pool thread
+            return self._workflow.execute(message)
         return message
 
     async def ask(self, message: Any):
@@ -145,6 +147,16 @@ class Aitor(Generic[T]):
         )
         return await self.on_receive(message)
 
+    @classmethod
+    def get_loop(cls):
+        """
+        Get or create an event loop for the current thread.
+        """
+        if not hasattr(cls._thread_local, 'loop'):
+            cls._thread_local.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(cls._thread_local.loop)
+        return cls._thread_local.loop
+
     def tell(self, message: Any):
         """
         Non-blocking call to send a message to the aitor.
@@ -154,10 +166,8 @@ class Aitor(Generic[T]):
             message: The message to be processed
         """
         def run_in_new_thread():
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
+            loop = self.get_loop()
+            
             try:
                 logger.info(
                     f"Aitor.tell executing - aitor_id: {self._id}, aitor_name: {self._name}, "
@@ -171,14 +181,6 @@ class Aitor(Generic[T]):
                     f"Error in aitor processing message - aitor_id: {self._id}, error: {str(e)}",
                     exc_info=True
                 )
-            finally:
-                # Wait for all pending tasks to complete naturally
-                pending = asyncio.all_tasks(loop)
-                if pending:
-                    loop.run_until_complete(
-                        asyncio.gather(*pending, return_exceptions=True)
-                    )
-                loop.close()
 
         # Submit the task to thread pool
         self._thread_pool.submit(run_in_new_thread)
@@ -216,12 +218,19 @@ class Aitor(Generic[T]):
     @classmethod
     def shutdown(cls):
         """
-        Cleanup method to properly shutdown the thread pool and event loop.
+        Cleanup method to properly shutdown the thread pool and event loops.
         Should be called when shutting down the application.
         """
+        # Shutdown thread pool first
         cls._thread_pool.shutdown(wait=True)
-        try:
-            cls._loop.stop()
-            cls._loop.close()
-        except:
-            pass
+        
+        # Clean up any event loops in thread local storage
+        if hasattr(cls._thread_local, 'loop'):
+            try:
+                loop = cls._thread_local.loop
+                if loop.is_running():
+                    loop.stop()
+                if not loop.is_closed():
+                    loop.close()
+            except Exception as e:
+                logger.error(f"Error shutting down event loop: {e}")
