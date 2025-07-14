@@ -180,3 +180,5 @@ ENV/
 .vscode/
 *.swp
 *.swo
+
+CLAUDE.*
