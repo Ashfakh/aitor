@@ -9,9 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from .react_agent import ReactAgent
 
-from .llm import BaseLLM, LLMManager, Message as LLMMessage
+from .llm import BaseLLM, LLMManager, LLMResponse, Message as LLMMessage
 from pydantic import BaseModel, Field
-from typing import List as ListType
 from .memory import ReactMemory, ReasoningStep, ReasoningStepType, MessageRole
 from .tools import ToolRegistry, ToolExecution
 from .todo import TodoManager, TodoItem, TodoStatus, TodoPriority
@@ -32,7 +31,7 @@ class PlannedTodo(BaseModel):
 
 class TodoPlan(BaseModel):
     """Model for the complete todo plan."""
-    todos: ListType[PlannedTodo] = Field(..., description="List of todo items to execute")
+    todos: List[PlannedTodo] = Field(..., description="List of todo items to execute")
 
 
 @dataclass
@@ -181,16 +180,22 @@ Create the minimal necessary todo list."""
         
         # Get structured response
         if self.llm:
-            todo_plan = await self.llm.generate_structured(messages, TodoPlan)
+            todo_plan: TodoPlan = await self.llm.generate_structured(messages, TodoPlan)
         else:
-            todo_plan = await self.llm_manager.generate_structured(messages, TodoPlan)
+            todo_plan: TodoPlan = await self.llm_manager.generate_structured(messages, TodoPlan)
         
         # Create todos from structured response
         todos = []
         for planned_todo in todo_plan.todos:
+            # Ensure priority is valid
+            try:
+                priority = TodoPriority(planned_todo.priority.lower())
+            except ValueError:
+                priority = TodoPriority.MEDIUM  # Default to medium if invalid
+            
             todo = await self.todo_manager.create_todo(
                 content=planned_todo.content,
-                priority=TodoPriority(planned_todo.priority)
+                priority=priority
             )
             todos.append(todo)
         
@@ -256,7 +261,7 @@ Create the minimal necessary todo list."""
                     await self.todo_manager.mark_todo_completed(next_todo.id, result.result)
                     log_todo_status_change(next_todo.id, next_todo.content, "in_progress", "completed")
                 else:
-                    await self.todo_manager.mark_todo_failed(next_todo.id, result.error)
+                    await self.todo_manager.mark_todo_failed(next_todo.id, result.error or "Unknown error")
                     log_todo_status_change(next_todo.id, next_todo.content, "in_progress", "failed")
                     error_count += 1
                 
@@ -566,8 +571,10 @@ Provide a clear, comprehensive final answer that addresses the original problem 
         
         if self.llm:
             response = await self.llm.generate(messages)
-        else:
+        elif self.llm_manager:
             response = await self.llm_manager.generate(messages)
+        else:
+            raise ValueError("No LLM or LLM manager available")
         
         final_answer = response.content.strip()
         

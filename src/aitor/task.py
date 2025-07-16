@@ -19,7 +19,7 @@ class Task:
         self.name = name or func.__name__
         self.upstream_tasks: List['Task'] = []
         self.downstream_tasks: List['Task'] = []
-        self.upstream_order = {}  # Maps task to position
+        self.upstream_order: Dict['Task', int] = {}  # Maps task to position
         self.signature = inspect.signature(func)
         
     def __rshift__(self, other: Union['Task', List['Task']]) -> Union['Task', List['Task']]:

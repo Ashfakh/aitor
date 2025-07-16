@@ -114,7 +114,7 @@ class Aitor(Generic[T]):
         Returns:
             T: The loaded memory object
         """
-        pass
+        raise NotImplementedError("_load_memory method must be implemented by subclasses")
 
     async def on_receive(self, message: Any):
         """

@@ -5,7 +5,7 @@ Combines memory-enabled agents with ReAct reasoning and tool execution.
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from .aitor import Aitor
 from .llm import BaseLLM, LLMManager
@@ -423,7 +423,7 @@ async def create_react_agent(
     name: Optional[str] = None,
     llm_provider: Optional[str] = None,
     llm_config: Optional[Dict[str, Any]] = None,
-    tools: Optional[List[Union[Tool, callable]]] = None,
+    tools: Optional[List[Union[Tool, Callable]]] = None,
     **kwargs
 ) -> ReactAgent:
     """

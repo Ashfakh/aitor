@@ -166,8 +166,9 @@ class ReactMemory:
             metadata: Optional metadata
         """
         with self._lock:
+            message_role = role if isinstance(role, MessageRole) else MessageRole(role)
             message = Message(
-                role=role,
+                role=message_role,
                 content=content,
                 metadata=metadata or {}
             )

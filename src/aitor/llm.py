@@ -590,7 +590,7 @@ class MockLLM(BaseLLM):
                 elif field_name == "tool_name":
                     mock_data[field_name] = "mock_tool"
                 elif field_name == "parameters":
-                    mock_data[field_name] = {}
+                    mock_data[field_name] = "{}"
                 else:
                     mock_data[field_name] = "mock_value"
             
@@ -628,7 +628,7 @@ class LLMFactory:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         
         llm_class = cls._providers[provider]
-        return llm_class(config)
+        return llm_class(config)  # type: ignore
     
     @classmethod
     def register_provider(cls, provider: LLMProvider, llm_class: type):
@@ -639,7 +639,7 @@ class LLMFactory:
             provider: Provider enum
             llm_class: LLM class
         """
-        cls._providers[provider] = llm_class
+        cls._providers[provider] = llm_class  # type: ignore
 
 
 class LLMManager:

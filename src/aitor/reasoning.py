@@ -257,14 +257,16 @@ Important:
         # Get structured LLM response
         if self.llm:
             action_response = await self.llm.generate_structured(messages, ReactAgentResponse)
-        else:
+        elif self.llm_manager:
             action_response = await self.llm_manager.generate_structured(messages, ReactAgentResponse)
+        else:
+            raise ValueError("No LLM or LLM manager available")
         
         # Log the LLM response
         log_response("ReAct Engine", str(action_response))
         
         # Convert structured response to reasoning step
-        return self._convert_action_to_reasoning_step(action_response)
+        return self._convert_action_to_reasoning_step(action_response)  # type: ignore
     
     def _build_llm_messages(self, memory: ReactMemory) -> List[LLMMessage]:
         """

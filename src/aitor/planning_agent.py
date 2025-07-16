@@ -6,7 +6,7 @@ Enhanced version of ReactAgent with Claude Code-like planning capabilities.
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from .aitor import Aitor
 from .llm import BaseLLM, LLMManager
@@ -314,7 +314,7 @@ class PlanningReactAgent(Aitor[ReactMemory]):
             planning_context += f"Total todos: {len(todos)}\n"
             
             # Group by status
-            by_status = {}
+            by_status: Dict[str, List[TodoItem]] = {}
             for todo in todos:
                 status = todo.status.value
                 if status not in by_status:
@@ -573,7 +573,7 @@ async def create_planning_agent(
     name: Optional[str] = None,
     llm_provider: Optional[str] = None,
     llm_config: Optional[Dict[str, Any]] = None,
-    tools: Optional[List[Union[Tool, callable]]] = None,
+    tools: Optional[List[Union[Tool, Callable]]] = None,
     **kwargs
 ) -> PlanningReactAgent:
     """
