@@ -12,36 +12,10 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 # Structured response models
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, Discriminator
 from typing import Literal
 
 logger = logging.getLogger(__name__)
-
-
-# Pydantic models for structured responses
-class ThinkAction(BaseModel):
-    """Model for thinking/reasoning actions."""
-    action: Literal["think"] = "think"
-    content: str = Field(..., description="Brief reasoning about the task")
-
-
-class ToolAction(BaseModel):
-    """Model for tool usage actions."""
-    action: Literal["use_tool"] = "use_tool"
-    tool_name: str = Field(..., description="Name of the tool to use")
-    parameters: Dict[str, Any] = Field(default_factory=dict, description="Tool parameters")
-
-
-class ResultAction(BaseModel):
-    """Model for final result actions."""
-    action: Literal["result"] = "result"
-    content: str = Field(..., description="Final answer or result")
-
-
-# Union type for all possible actions
-from typing import Union
-AgentAction = Union[ThinkAction, ToolAction, ResultAction]
-
 
 class LLMProvider(Enum):
     """Supported LLM providers."""

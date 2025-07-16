@@ -14,7 +14,6 @@ from .memory import ReactMemory, MessageRole
 from .planning_reasoning import PlanningReasoningEngine
 from .tools import ToolRegistry, Tool, tool, default_registry
 from .todo import TodoManager, TodoItem, TodoStatus
-from .sub_agent import SubAgentManager
 
 logger = logging.getLogger(__name__)
 
@@ -204,14 +203,16 @@ class PlanningReactAgent(Aitor[ReactMemory]):
         """
         return self.reasoning_engine.get_todo_manager()
     
-    def get_sub_agent_manager(self) -> SubAgentManager:
+    def get_sub_agent_manager(self):
         """
         Get the sub-agent manager instance.
         
         Returns:
-            SubAgentManager instance
+            Sub-agent manager instance (now uses ReactAgent instances)
         """
-        return self.reasoning_engine.get_sub_agent_manager()
+        # We don't have a centralized sub-agent manager anymore
+        # Sub-agents are created as ReactAgent instances per task
+        return None
     
     async def get_current_todos(self) -> List[TodoItem]:
         """
@@ -253,9 +254,8 @@ class PlanningReactAgent(Aitor[ReactMemory]):
         return self.get_todo_manager().get_todo_tree()
     
     async def clear_planning_state(self):
-        """Clear all planning state (todos, sub-agents)."""
+        """Clear all planning state (todos)."""
         await self.get_todo_manager().clear_todos()
-        self.get_sub_agent_manager().clear_sub_agents()
         logger.info("Cleared planning state")
     
     def get_sub_agents(self) -> List[str]:
@@ -265,7 +265,9 @@ class PlanningReactAgent(Aitor[ReactMemory]):
         Returns:
             List of sub-agent names
         """
-        return self.get_sub_agent_manager().list_sub_agents()
+        # Sub-agents are now ReactAgent instances created per task
+        # We don't maintain a persistent list of them
+        return []
     
     # Enhanced context methods
     
@@ -334,6 +336,8 @@ class PlanningReactAgent(Aitor[ReactMemory]):
                 planning_context += f"\nActive sub-agents: {', '.join(sub_agents)}\n"
             
             base_context += planning_context
+            
+            
         
         return base_context
     

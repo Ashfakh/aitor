@@ -127,7 +127,7 @@ async def simple_math_demo():
         provider="openai",
         config={
             "model": "o3-mini",
-            "max_tokens": 500
+            "max_tokens": 1000
         }
     )
     
@@ -176,7 +176,7 @@ async def main():
     
     try:
         # Run focused math planning demo
-        agent = await math_planning_demo()
+        # agent = await math_planning_demo()
         
         # Run simple demo
         await simple_math_demo()

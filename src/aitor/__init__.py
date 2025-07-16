@@ -21,14 +21,13 @@ from .task import Task, task
 from .react_agent import ReactAgent, ReactAgentBuilder, create_react_agent
 from .tools import Tool, ToolRegistry, ToolResult, ToolExecution, tool, default_registry
 from .memory import ReactMemory, Message, ReasoningStep, MessageRole, ReasoningStepType
-from .reasoning import ReasoningEngine, ActionCall
+from .reasoning import ReasoningEngine
 from .llm import LLMManager, LLMFactory, LLMProvider, BaseLLM, LLMResponse, Message as LLMMessage
 
 # Planning agent components
 from .planning_agent import PlanningReactAgent, PlanningReactAgentBuilder, create_planning_agent
 from .planning_reasoning import PlanningReasoningEngine
 from .todo import TodoManager, TodoItem, TodoStatus, TodoPriority
-from .sub_agent import SubAgent, SubAgentManager, SubAgentResult
 
 __all__ = [
     # Core Aitor
@@ -65,7 +64,6 @@ __all__ = [
     
     # Reasoning
     "ReasoningEngine",
-    "ActionCall",
     
     # Todo Management
     "TodoManager",
@@ -73,10 +71,6 @@ __all__ = [
     "TodoStatus",
     "TodoPriority",
     
-    # Sub-agents
-    "SubAgent",
-    "SubAgentManager",
-    "SubAgentResult",
     
     # LLM
     "LLMManager",

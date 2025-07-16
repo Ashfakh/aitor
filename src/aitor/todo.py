@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Callable, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -231,97 +231,6 @@ class TodoManager:
             "current_todo": await self.get_next_pending_todo()
         }
     
-    async def create_plan_from_problem(self, problem: str, llm_generate_func: Callable) -> List[TodoItem]:
-        """
-        Create a todo plan from a problem description using LLM.
-        
-        Args:
-            problem: Problem description
-            llm_generate_func: Function to generate LLM responses
-            
-        Returns:
-            List of created todo items
-        """
-        planning_prompt = f"""
-        You are a task planning assistant. Break down the following problem into a clear, actionable todo list.
-        
-        Problem: {problem}
-        
-        Create a structured plan with specific, actionable tasks. Each task should be:
-        1. Clear and specific
-        2. Actionable (can be executed by tools or reasoning)
-        3. Properly ordered (dependencies considered)
-        4. Appropriately sized (not too big or too small)
-        
-        Format your response as a JSON array of tasks:
-        [
-            {{
-                "content": "specific task description",
-                "priority": "high|medium|low",
-                "dependencies": ["task_index_that_must_complete_first"]
-            }}
-        ]
-        
-        Example:
-        [
-            {{
-                "content": "Analyze the current system architecture",
-                "priority": "high",
-                "dependencies": []
-            }},
-            {{
-                "content": "Identify performance bottlenecks",
-                "priority": "medium", 
-                "dependencies": ["0"]
-            }}
-        ]
-        
-        Respond with ONLY the JSON array, no additional text.
-        """
-        
-        # Generate plan using LLM
-        from .logging_config import log_prompt, log_response
-        log_prompt("Todo Manager", planning_prompt, {"problem_length": len(problem)})
-        
-        response = await llm_generate_func([{"role": "user", "content": planning_prompt}])
-        
-        log_response("Todo Manager", response.content, {"response_length": len(response.content)})
-        
-        try:
-            # Parse the JSON response
-            plan_data = json.loads(response.content.strip())
-            
-            # Create todos from plan
-            created_todos = []
-            todo_mapping = {}  # Index to todo_id mapping
-            
-            for i, task_data in enumerate(plan_data):
-                priority = TodoPriority(task_data.get("priority", "medium"))
-                
-                todo = await self.create_todo(
-                    content=task_data["content"],
-                    priority=priority,
-                    metadata={"plan_index": i, "dependencies": task_data.get("dependencies", [])}
-                )
-                
-                created_todos.append(todo)
-                todo_mapping[i] = todo.id
-            
-            # Set up dependencies (for now, we'll implement this as execution order)
-            # In a more sophisticated system, we'd track actual dependencies
-            
-            logger.info(f"Created {len(created_todos)} todos from problem: {problem}")
-            return created_todos
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM planning response: {e}")
-            # Fallback: create a single todo
-            todo = await self.create_todo(
-                content=f"Solve: {problem}",
-                priority=TodoPriority.HIGH,
-                metadata={"fallback": True}
-            )
-            return [todo]
     
     def get_all_todos(self) -> List[TodoItem]:
         """Get all todos in execution order."""

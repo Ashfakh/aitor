@@ -396,3 +396,48 @@ ReAct agents seamlessly integrate with the base Aitor framework:
 - Memory persistence is not implemented (export/import available)
 - No configuration management system
 - Limited error recovery mechanisms in base Aitor (improved in ReAct agents)
+
+## Recent Updates and Improvements
+
+### Planning Agent Framework
+The framework now includes an advanced planning agent system that extends the ReAct architecture with task planning and sub-agent capabilities.
+
+#### Key Components
+1. **PlanningReactAgent** (`src/aitor/planning_agent.py`): Agent that breaks down complex tasks into todos
+2. **TodoManager** (`src/aitor/todo.py`): Task planning and tracking with priority management
+3. **SubAgentManager** (`src/aitor/sub_agent.py`): Delegate bounded tasks to specialized sub-agents
+4. **PlanningReasoningEngine** (`src/aitor/planning_reasoning.py`): Plan → Execute → Adapt reasoning loop
+
+### JSON Structured Responses
+- **Instructor Integration**: Added Pydantic models for structured LLM responses
+- **Reliable Tool Calling**: Using typed models (ThinkAction, ToolAction, ResultAction)
+- **Better Error Handling**: Structured validation of LLM outputs
+
+### Sales Chat Agent Example
+Located in `examples/sales_chat_agent.py`:
+- Interactive stdin/stdout tools for real-time conversations
+- Sales-focused prompts for subtle demo booking guidance
+- Demonstrates tool usage for user interaction
+
+### API Compatibility Updates
+- **o3-mini Support**: Use `max_completion_tokens` instead of `max_tokens`
+- **Temperature Handling**: o3 models don't support temperature parameter
+- **Token Limits**: Increased default tokens to 500+ for proper responses
+
+### Enhanced Logging
+- Comprehensive logging with emojis and structure (`src/aitor/logging_config.py`)
+- Detailed prompt/response logging
+- Todo creation and status tracking
+- Sub-agent execution monitoring
+
+## Testing Commands
+When working on the codebase:
+- Linting: `uv run ruff check .`
+- Type checking: `uv run mypy src/`
+- Tests: `uv run pytest`
+
+## Common Issues and Solutions
+1. **Empty LLM responses**: Increase max_tokens parameter (500+ recommended)
+2. **Tool parsing errors**: Use structured JSON responses with Pydantic
+3. **Sub-agent loops**: Ensure clear RESULT format in prompts
+4. **API errors**: Check model-specific parameter requirements (o3-mini, gpt-4o)

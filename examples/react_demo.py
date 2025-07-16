@@ -36,18 +36,6 @@ async def debug_demo():
                    .llm_manager(llm_manager)
                    .tool_registry(tool_registry)
                    .max_reasoning_steps(8)
-                   .system_prompt("""You are a helpful assistant that uses tools to solve problems.
-
-When you need to:
-- Calculate something: use calculator(expression="...")
-- Get current time: use current_time()
-
-Always use the format:
-ACT: tool_name(param="value")
-
-After using a tool, provide a FINAL_ANSWER with the result.
-
-Be direct and use tools when needed.""")
                    .build())
     
     # Register tools

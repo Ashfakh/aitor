@@ -6,12 +6,13 @@ Implements the Think -> Act -> Observe reasoning loop.
 import asyncio
 import json
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from .llm import BaseLLM, LLMManager, Message as LLMMessage
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, Literal
 from .memory import ReactMemory, ReasoningStep, ReasoningStepType, MessageRole
 from .tools import ToolRegistry, ToolResult, ToolExecution
 from .logging_config import log_prompt, log_response, log_reasoning_step, log_tool_execution, log_section_start, log_section_end
@@ -19,16 +20,15 @@ from .logging_config import log_prompt, log_response, log_reasoning_step, log_to
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ActionCall:
-    """Represents a parsed action call from reasoning text."""
-    tool_name: str
-    parameters: Dict[str, Any]
-    reasoning: str
-    
-    def __post_init__(self):
-        if not self.tool_name:
-            raise ValueError("Tool name cannot be empty")
+# Comprehensive response model for React agents
+class ReactAgentResponse(BaseModel):
+    """Comprehensive response model that handles all action types."""
+    action: Literal["think", "use_tool", "result"] = Field(..., description="Type of action to take")
+    content: Optional[str] = Field(None, description="Content for think or result actions")
+    tool_name: Optional[str] = Field(None, description="Name of tool to use (for use_tool action)")
+    parameters: Optional[Dict[str, Any]] = Field(None, description="Parameters for tool (for use_tool action)")
+
+
 
 
 class ReasoningEngine:
@@ -45,7 +45,10 @@ class ReasoningEngine:
         llm_manager: Optional[LLMManager] = None,
         max_reasoning_steps: int = 20,
         max_errors: int = 3,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        task_goal: Optional[str] = None,
+        additional_instructions: Optional[str] = None,
+        agent_role: Optional[str] = None
     ):
         """
         Initialize reasoning engine.
@@ -56,20 +59,51 @@ class ReasoningEngine:
             llm_manager: LLM manager for multiple providers
             max_reasoning_steps: Maximum reasoning steps per problem
             max_errors: Maximum errors before stopping
-            system_prompt: Custom system prompt for the agent
+            system_prompt: Custom system prompt for the agent (if provided, overrides default)
+            task_goal: Specific task or goal for the agent
+            additional_instructions: Additional context-specific instructions
+            agent_role: Role description for the agent (e.g., "calculator_agent")
         """
         self.tool_registry = tool_registry
         self.llm = llm
         self.llm_manager = llm_manager
         self.max_reasoning_steps = max_reasoning_steps
         self.max_errors = max_errors
-        self.system_prompt = system_prompt or self._get_default_system_prompt()
+        self.task_goal = task_goal
+        self.additional_instructions = additional_instructions
+        self.agent_role = agent_role
+        self.custom_system_prompt = system_prompt
         
         if not self.llm and not self.llm_manager:
             raise ValueError("Either llm or llm_manager must be provided")
     
-    def _get_default_system_prompt(self) -> str:
-        """Get default system prompt for ReAct agent."""
+    def _build_system_prompt(self) -> str:
+        """Build system prompt from components."""
+        # Base ReAct prompt with structured response format
+        base_prompt = self._get_base_react_prompt()
+        
+        # Add task-specific information
+        if self.task_goal:
+            base_prompt += f"\n\nYour current task: {self.task_goal}"
+        
+        if self.agent_role:
+            base_prompt = base_prompt.replace(
+                "You are a ReAct (Reasoning and Acting) agent",
+                f"You are a {self.agent_role} using ReAct (Reasoning and Acting) methodology"
+            )
+        
+        if self.additional_instructions:
+            base_prompt += f"\n\nAdditional instructions:\n{self.additional_instructions}"
+        
+        # Add available tools information
+        tools_info = self._format_tools_info()
+        if tools_info:
+            base_prompt += "\n\n" + tools_info
+        
+        return base_prompt
+    
+    def _get_base_react_prompt(self) -> str:
+        """Get base ReAct prompt with structured response format."""
         return """You are a ReAct (Reasoning and Acting) agent. Your task is to solve problems by thinking step by step and using available tools when needed.
 
 You operate in a loop of Thought, Action, and Observation:
@@ -77,23 +111,34 @@ You operate in a loop of Thought, Action, and Observation:
 2. Action: Use tools to gather information or perform tasks
 3. Observation: Analyze the results and continue reasoning
 
-Always format your responses in one of these ways:
+You must respond with a structured JSON object with the following schema:
 
-For thinking:
-THINK: [Your reasoning about the problem and what to do next]
+Required field:
+- "action": Must be one of "think", "use_tool", or "result"
+
+Optional fields (populate based on action type):
+- "content": For "think" and "result" actions - your reasoning or final answer
+- "tool_name": For "use_tool" action - exact name of the tool to use
+- "parameters": For "use_tool" action - object with tool parameters
+
+Examples:
+
+For thinking/reasoning:
+{"action": "think", "content": "Your reasoning about the problem and what to do next"}
 
 For using a tool:
-ACT: tool_name(param1="value1", param2="value2")
+{"action": "use_tool", "tool_name": "tool_name", "parameters": {"param1": "value1", "param2": "value2"}}
 
 For providing the final answer:
-FINAL_ANSWER: [Your complete answer to the user's question]
+{"action": "result", "content": "Your complete answer to the user's question"}
 
 Important:
 - Be thorough in your thinking before taking actions
-- Use tools when you need specific information or to perform tasks
+- Always use tools when you need specific information or to perform tasks
 - Analyze observations carefully before proceeding
 - Provide a clear, complete final answer when you have enough information
-- If you encounter errors, adapt your approach and try alternatives"""
+- If you encounter errors, adapt your approach and try alternatives
+- Always respond with valid JSON matching the schema above"""
     
     async def solve_problem(self, problem: str, memory: ReactMemory) -> str:
         """
@@ -197,7 +242,7 @@ Important:
     
     async def _generate_reasoning_step(self, memory: ReactMemory) -> ReasoningStep:
         """
-        Generate the next reasoning step using LLM.
+        Generate the next reasoning step using LLM with structured responses.
         
         Args:
             memory: Agent memory
@@ -212,17 +257,17 @@ Important:
         prompt_text = "\n".join([f"Message {i+1} ({msg.role}):\n{msg.content}" for i, msg in enumerate(messages)])
         log_prompt("ReAct Engine", prompt_text, {"message_count": len(messages)})
         
-        # Get LLM response
+        # Get structured LLM response
         if self.llm:
-            llm_response = await self.llm.generate(messages)
+            action_response = await self.llm.generate_structured(messages, ReactAgentResponse)
         else:
-            llm_response = await self.llm_manager.generate(messages)
+            action_response = await self.llm_manager.generate_structured(messages, ReactAgentResponse)
         
         # Log the LLM response
-        log_response("ReAct Engine", llm_response.content)
+        log_response("ReAct Engine", str(action_response))
         
-        # Parse response to determine step type and content
-        return await self._parse_reasoning_response(llm_response.content)
+        # Convert structured response to reasoning step
+        return self._convert_action_to_reasoning_step(action_response)
     
     def _build_llm_messages(self, memory: ReactMemory) -> List[LLMMessage]:
         """
@@ -236,15 +281,9 @@ Important:
         """
         messages = []
         
-        # System message
-        system_content = self.system_prompt
-        
-        # Add available tools to system message
-        tools_info = self._format_tools_info()
-        if tools_info:
-            system_content += "\n\n" + tools_info
-        
-        messages.append(LLMMessage("system", system_content))
+        # System message (build dynamically to include current tools)
+        system_prompt = self.custom_system_prompt or self._build_system_prompt()
+        messages.append(LLMMessage("system", system_prompt))
         
         # Add conversation history
         for msg in memory.conversation_history:
@@ -287,18 +326,20 @@ Important:
         tool_descriptions.append("AVAILABLE TOOLS:")
         
         for tool in tools:
-            # Format parameters
-            param_parts = []
-            for param_name, param_info in tool.parameters.items():
-                param_type = param_info.get('type', 'Any')
-                required = param_info.get('required', False)
-                param_str = f"{param_name}: {param_type}"
-                if not required:
-                    param_str += " (optional)"
-                param_parts.append(param_str)
+            # Create detailed parameter descriptions
+            params = []
+            if tool.parameters:
+                for param_name, param_info in tool.parameters.items():
+                    if isinstance(param_info, dict):
+                        param_type = param_info.get('type', 'str')
+                        required = param_info.get('required', False)
+                        param_desc = f"{param_name}: {param_type}"
+                        if not required:
+                            param_desc += " (optional)"
+                        params.append(param_desc)
             
-            params_str = ", ".join(param_parts)
-            tool_descriptions.append(f"- {tool.name}({params_str}): {tool.description}")
+            param_str = f"({', '.join(params)})" if params else "()"
+            tool_descriptions.append(f"- {tool.name}{param_str}: {tool.description}")
         
         return "\n".join(tool_descriptions)
     
@@ -365,130 +406,57 @@ Important:
             tool_result=tool_result
         )
     
-    async def _parse_reasoning_response(self, response: str) -> ReasoningStep:
+    def _convert_action_to_reasoning_step(self, action: ReactAgentResponse) -> ReasoningStep:
         """
-        Parse LLM response into a reasoning step.
+        Convert structured action response to reasoning step.
         
         Args:
-            response: LLM response text
+            action: Structured action from LLM
             
         Returns:
             Parsed reasoning step
         """
-        response = response.strip()
-        
-        # Parse different step types
-        if response.upper().startswith("THINK:"):
-            content = response[6:].strip()
-            return ReasoningStep(
-                step_type=ReasoningStepType.THINK,
-                content=content
-            )
-            
-        elif response.upper().startswith("ACT:"):
-            action_text = response[4:].strip()
-            try:
-                action_call = await self._parse_action_call(action_text)
-                return ReasoningStep(
-                    step_type=ReasoningStepType.ACT,
-                    content=action_text,
-                    tool_name=action_call.tool_name,
-                    tool_params=action_call.parameters
-                )
-            except Exception as e:
-                logger.error(f"Failed to parse action: {e}")
-                # Return as thinking step if parsing fails
+        try:
+            if action.action == "think":
                 return ReasoningStep(
                     step_type=ReasoningStepType.THINK,
-                    content=f"I tried to use a tool but the format was incorrect: {action_text}"
+                    content=action.content or ""
+                )
+            
+            elif action.action == "use_tool":
+                if not action.tool_name:
+                    raise ValueError("Tool name not specified in use_tool action")
+                
+                # Create action description for content
+                param_strs = [f'{k}="{v}"' for k, v in (action.parameters or {}).items()]
+                action_content = f"{action.tool_name}({', '.join(param_strs)})"
+                
+                return ReasoningStep(
+                    step_type=ReasoningStepType.ACT,
+                    content=action_content,
+                    tool_name=action.tool_name,
+                    tool_params=action.parameters or {}
+                )
+            
+            elif action.action == "result":
+                return ReasoningStep(
+                    step_type=ReasoningStepType.FINAL_ANSWER,
+                    content=action.content or ""
+                )
+            
+            else:
+                # Unknown action type, treat as thinking
+                logger.warning(f"Unknown action type '{action.action}', treating as thinking")
+                return ReasoningStep(
+                    step_type=ReasoningStepType.THINK,
+                    content=f"Unknown action: {action.action}"
                 )
                 
-        elif "FINAL_ANSWER:" in response.upper():
-            # Find the FINAL_ANSWER anywhere in the response
-            final_answer_index = response.upper().find("FINAL_ANSWER:")
-            content = response[final_answer_index + 13:].strip()
-            return ReasoningStep(
-                step_type=ReasoningStepType.FINAL_ANSWER,
-                content=content
-            )
-            
-        else:
-            # Default to thinking step if format is not recognized
+        except Exception as e:
+            logger.error(f"Failed to convert action to reasoning step: {e}, action: {action}")
+            # Fallback to thinking step
             return ReasoningStep(
                 step_type=ReasoningStepType.THINK,
-                content=response
+                content=f"Failed to process action: {str(action)[:100]}"
             )
     
-    async def _parse_action_call(self, action_text: str) -> ActionCall:
-        """
-        Parse action call from text.
-        
-        Args:
-            action_text: Text containing action call
-            
-        Returns:
-            Parsed action call
-        """
-        # Try to parse as function call format: tool_name(param1="value1", param2=value2)
-        match = re.match(r'(\w+)\((.*?)\)$', action_text.strip())
-        if not match:
-            raise ValueError(f"Invalid action format: {action_text}")
-        
-        tool_name = match.group(1)
-        params_str = match.group(2).strip()
-        
-        # Parse parameters
-        parameters = {}
-        
-        if params_str:
-            # Try to parse as Python-like arguments
-            try:
-                # Build a safe dict for evaluation
-                safe_dict = {"true": True, "false": False, "null": None}
-                
-                # Replace parameter format to be JSON-compatible
-                # Handle both param="value" and param=value formats
-                params_str = re.sub(r'(\w+)=', r'"\1": ', params_str)
-                
-                # Wrap in braces to make it a JSON object
-                json_str = "{" + params_str + "}"
-                
-                # Parse as JSON
-                parameters = json.loads(json_str)
-                
-            except Exception as e:
-                logger.error(f"Failed to parse parameters as JSON: {e}")
-                
-                # Fallback to simple parsing
-                for param_match in re.finditer(r'(\w+)=([^,]+)', params_str):
-                    key = param_match.group(1)
-                    value = param_match.group(2).strip()
-                    
-                    # Clean up value
-                    if value.startswith('"') and value.endswith('"'):
-                        value = value[1:-1]
-                    elif value.startswith("'") and value.endswith("'"):
-                        value = value[1:-1]
-                    elif value.lower() == 'true':
-                        value = True
-                    elif value.lower() == 'false':
-                        value = False
-                    elif value.lower() == 'none' or value.lower() == 'null':
-                        value = None
-                    else:
-                        # Try to parse as number
-                        try:
-                            if '.' in value:
-                                value = float(value)
-                            else:
-                                value = int(value)
-                        except ValueError:
-                            pass  # Keep as string
-                    
-                    parameters[key] = value
-        
-        return ActionCall(
-            tool_name=tool_name,
-            parameters=parameters,
-            reasoning=action_text
-        )

@@ -38,7 +38,10 @@ class ReactAgent(Aitor[ReactMemory]):
         system_prompt: Optional[str] = None,
         max_reasoning_steps: int = 20,
         max_errors: int = 3,
-        memory_config: Optional[Dict[str, Any]] = None
+        memory_config: Optional[Dict[str, Any]] = None,
+        task_goal: Optional[str] = None,
+        agent_role: Optional[str] = None,
+        additional_instructions: Optional[str] = None
     ):
         """
         Initialize ReAct agent.
@@ -81,7 +84,10 @@ class ReactAgent(Aitor[ReactMemory]):
             llm_manager=llm_manager,
             max_reasoning_steps=max_reasoning_steps,
             max_errors=max_errors,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            task_goal=task_goal,
+            agent_role=agent_role,
+            additional_instructions=additional_instructions
         )
         
         logger.info(f"Initialized ReactAgent: {self.name} (session: {self.memory.session_id})")

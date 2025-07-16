@@ -6,14 +6,18 @@ Implements task planning, todo management, and sub-agent execution like Claude C
 import asyncio
 import json
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional
+
+from .react_agent import ReactAgent
 
 from .llm import BaseLLM, LLMManager, Message as LLMMessage
+from pydantic import BaseModel, Field
+from typing import List as ListType
 from .memory import ReactMemory, ReasoningStep, ReasoningStepType, MessageRole
 from .tools import ToolRegistry, ToolResult, ToolExecution
 from .todo import TodoManager, TodoItem, TodoStatus, TodoPriority
-from .sub_agent import SubAgentManager, SubAgentResult
 from .logging_config import (
     log_prompt, log_response, log_reasoning_step, log_tool_execution, 
     log_section_start, log_section_end, log_todo_created, log_todo_status_change, 
@@ -21,6 +25,30 @@ from .logging_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Pydantic models for structured todo planning
+class PlannedTodo(BaseModel):
+    """Model for a single planned todo item."""
+    content: str = Field(..., description="Clear, actionable task description")
+    priority: str = Field(default="medium", description="Priority level: low, medium, high, or urgent")
+
+
+class TodoPlan(BaseModel):
+    """Model for the complete todo plan."""
+    todos: ListType[PlannedTodo] = Field(..., description="List of todo items to execute")
+
+
+@dataclass
+class ReactAgentResult:
+    """Result of ReactAgent execution."""
+    success: bool
+    result: Optional[str] = None
+    error: Optional[str] = None
+    reasoning_steps: List[ReasoningStep] = field(default_factory=list)
+    tool_executions: List[ToolExecution] = field(default_factory=list)
+    execution_time: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class PlanningReasoningEngine:
@@ -63,19 +91,18 @@ class PlanningReasoningEngine:
         
         # Planning components
         self.todo_manager = TodoManager()
-        self.sub_agent_manager = SubAgentManager(tool_registry, llm, llm_manager)
         
         if not self.llm and not self.llm_manager:
             raise ValueError("Either llm or llm_manager must be provided")
     
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for planning agent."""
-        return """You are an advanced planning agent that breaks down complex problems into manageable tasks and executes them systematically.
+        return """You are an advanced planning agent that efficiently solves problems by creating minimal, focused task breakdowns.
 
 CRITICAL: You MUST respond with valid JSON only when requested. Use the structured format for tool usage.
 
 Your approach:
-1. PLAN: Analyze the problem and create a structured todo list
+1. PLAN: Analyze the problem complexity and create the minimal necessary todo list
 2. EXECUTE: Work through todos one by one using tools or sub-agents
 3. ADAPT: Adjust the plan based on results and new information
 4. COMPLETE: Provide comprehensive final answers
@@ -97,11 +124,14 @@ For other responses, use standard text format:
 - COMPLETE: [When the entire problem is solved]
 
 Key principles:
-- Break complex problems into specific, actionable tasks
+- ONLY break down truly complex problems that require multiple distinct steps
+- For simple tasks, create just ONE todo item that can be completed directly
+- Avoid over-planning: prefer fewer, more comprehensive todos over many small ones
+- Each todo should be substantial enough to warrant separate execution
 - Use sub-agents for bounded, focused tasks
 - Track progress and adapt plans as needed
 - Provide clear, comprehensive final answers
-- Be systematic and thorough in your approach"""
+- Be systematic but not overly granular in your approach"""
     
     async def solve_problem(self, problem: str, memory: ReactMemory) -> str:
         """
@@ -135,9 +165,38 @@ Key principles:
         """Create initial todo plan for the problem."""
         log_section_start("Creating Initial Plan")
         
-        # Generate plan using LLM
-        llm_generate_func = self._get_llm_generate_func()
-        todos = await self.todo_manager.create_plan_from_problem(problem, llm_generate_func)
+        # Generate plan using the planning agent's LLM with structured output
+        planning_prompt = f"""Analyze the following problem and determine if it needs to be broken down into multiple tasks.
+
+Problem: {problem}
+
+Guidelines:
+- For simple tasks that can be completed in one step, create just ONE todo
+- Only break down truly complex problems that require multiple distinct steps
+- Avoid over-planning: prefer fewer, more comprehensive todos over many small ones
+- Each todo should be substantial enough to warrant separate execution
+
+Create the minimal necessary todo list."""
+
+        messages = [
+            LLMMessage("system", "You are a planning agent that creates minimal, efficient task breakdowns."),
+            LLMMessage("user", planning_prompt)
+        ]
+        
+        # Get structured response
+        if self.llm:
+            todo_plan = await self.llm.generate_structured(messages, TodoPlan)
+        else:
+            todo_plan = await self.llm_manager.generate_structured(messages, TodoPlan)
+        
+        # Create todos from structured response
+        todos = []
+        for planned_todo in todo_plan.todos:
+            todo = await self.todo_manager.create_todo(
+                content=planned_todo.content,
+                priority=TodoPriority(planned_todo.priority)
+            )
+            todos.append(todo)
         
         # Log todos created
         for todo in todos:
@@ -217,7 +276,7 @@ Key principles:
         # If we reach here, generate final answer based on current state
         return await self._generate_final_answer(memory)
     
-    async def _execute_todo(self, todo: TodoItem, memory: ReactMemory) -> SubAgentResult:
+    async def _execute_todo(self, todo: TodoItem, memory: ReactMemory) -> 'ReactAgentResult':
         """Execute a specific todo item."""
         # Mark todo as in progress
         await self.todo_manager.mark_todo_in_progress(todo.id)
@@ -239,40 +298,18 @@ Key principles:
             {"todo_id": todo.id, "priority": todo.priority.value}
         )
         
-        # Determine execution strategy
-        if await self._should_delegate_to_sub_agent(todo):
-            # Use sub-agent for bounded execution
-            return await self._execute_with_sub_agent(todo, memory)
-        else:
-            # Execute directly with main agent
-            return await self._execute_directly(todo, memory)
+        # Execute with ReactAgent for bounded execution
+        return await self._execute_with_react_agent(todo, memory)
     
-    async def _should_delegate_to_sub_agent(self, todo: TodoItem) -> bool:
-        """Determine if todo should be delegated to sub-agent."""
-        # Delegate if:
-        # 1. Todo is a specific, bounded task
-        # 2. Todo involves tool usage
-        # 3. Todo doesn't require main context
-        
-        # For now, use simple heuristics
-        content_lower = todo.content.lower()
-        
-        # Keywords that suggest sub-agent suitability
-        sub_agent_keywords = [
-            "calculate", "compute", "search", "find", "get", "fetch",
-            "analyze", "check", "verify", "validate", "test",
-            "convert", "transform", "format", "parse"
-        ]
-        
-        return any(keyword in content_lower for keyword in sub_agent_keywords)
     
-    async def _execute_with_sub_agent(self, todo: TodoItem, memory: ReactMemory) -> SubAgentResult:
-        """Execute todo using a sub-agent."""
-        # Create specialized sub-agent based on todo type
-        agent_name = self._get_sub_agent_name(todo)
-        system_prompt = self._get_sub_agent_prompt(todo)
+    async def _execute_with_react_agent(self, todo: TodoItem, memory: ReactMemory) -> 'ReactAgentResult':
+        """Execute todo using a ReactAgent."""
+        # Create specialized agent based on todo type
+        agent_name = self._get_agent_name(todo)
+        agent_role = f"{agent_name} specialized in executing focused tasks efficiently"
+        additional_instructions = self._get_agent_instructions(todo)
         
-        # Create context for sub-agent
+        # Create context for agent
         context = {
             "todo_id": todo.id,
             "priority": todo.priority.value,
@@ -283,30 +320,30 @@ Key principles:
         log_reasoning_step(
             "Planning Engine",
             "DELEGATE",
-            f"Delegating to sub-agent '{agent_name}': {todo.content}",
-            {"sub_agent": agent_name, "todo_id": todo.id}
+            f"Delegating to ReactAgent '{agent_name}': {todo.content}",
+            {"agent": agent_name, "todo_id": todo.id}
         )
         
-        # Execute with sub-agent
-        result = await self.sub_agent_manager.execute_with_sub_agent(
+        # Execute with ReactAgent (isolated memory per task)
+        result = await self._execute_with_react_sub_agent(
             task=todo.content,
             agent_name=agent_name,
             context=context,
-            system_prompt=system_prompt,
-            max_reasoning_steps=5,  # Reduced for efficiency
-            timeout=30.0  # Reduced timeout
+            agent_role=agent_role,
+            additional_instructions=additional_instructions,
+            max_reasoning_steps=10
         )
         
-        # Log sub-agent execution result
+        # Log agent execution result
         log_sub_agent_execution(agent_name, todo.content, result.result, result.error)
         
         # Add delegation step to memory
         delegation_step = ReasoningStep(
             step_type=ReasoningStepType.THINK,
-            content=f"Delegated to sub-agent '{agent_name}': {todo.content}",
+            content=f"Delegated to ReactAgent '{agent_name}': {todo.content}",
             metadata={
                 "todo_id": todo.id,
-                "sub_agent": agent_name,
+                "agent": agent_name,
                 "phase": "delegation"
             }
         )
@@ -314,234 +351,9 @@ Key principles:
         
         return result
     
-    async def _execute_directly(self, todo: TodoItem, memory: ReactMemory) -> SubAgentResult:
-        """Execute todo directly with main agent reasoning."""
-        logger.info(f"Executing directly: {todo.content}")
-        
-        # Use main agent to execute the todo
-        # This is a simplified implementation - in practice, you'd use more sophisticated reasoning
-        
-        try:
-            # Generate reasoning for the todo
-            reasoning_step = await self._generate_reasoning_step_for_todo(todo, memory)
-            memory.add_reasoning_step(reasoning_step)
-            
-            # If it's an action, execute it
-            if reasoning_step.step_type == ReasoningStepType.ACT:
-                if reasoning_step.tool_name and reasoning_step.tool_params:
-                    tool_result = await self._execute_tool_action(
-                        reasoning_step.tool_name,
-                        reasoning_step.tool_params,
-                        memory
-                    )
-                    
-                    # Create success result
-                    return SubAgentResult(
-                        success=tool_result.success,
-                        result=str(tool_result.result) if tool_result.success else None,
-                        error=tool_result.error if not tool_result.success else None,
-                        reasoning_steps=[reasoning_step],
-                        tool_executions=[ToolExecution(
-                            tool_name=reasoning_step.tool_name,
-                            params=reasoning_step.tool_params,
-                            result=tool_result,
-                            timestamp=datetime.now()
-                        )]
-                    )
-            
-            # For thinking steps, return the reasoning as result
-            return SubAgentResult(
-                success=True,
-                result=reasoning_step.content,
-                reasoning_steps=[reasoning_step]
-            )
-            
-        except Exception as e:
-            logger.error(f"Direct execution failed: {str(e)}")
-            return SubAgentResult(
-                success=False,
-                error=str(e)
-            )
     
-    async def _generate_reasoning_step_for_todo(self, todo: TodoItem, memory: ReactMemory) -> ReasoningStep:
-        """Generate reasoning step for a specific todo."""
-        # Build prompt for todo execution
-        messages = self._build_todo_execution_messages(todo, memory)
-        
-        # Get LLM response
-        if self.llm:
-            llm_response = await self.llm.generate(messages)
-        else:
-            llm_response = await self.llm_manager.generate(messages)
-        
-        # Parse response
-        return self._parse_reasoning_response(llm_response.content)
-    
-    def _build_todo_execution_messages(self, todo: TodoItem, memory: ReactMemory) -> List[LLMMessage]:
-        """Build messages for todo execution."""
-        messages = []
-        
-        # System message
-        system_content = f"""You are executing a specific todo item as part of a larger plan.
-
-Todo: {todo.content}
-Priority: {todo.priority.value}
-
-Focus on completing this specific task. Use tools when needed.
-Respond with one of:
-- THINK: [reasoning about the todo]
-- ACT: tool_name(param="value") [to use a tool]
-- COMPLETE: [when todo is finished]
-"""
-        
-        # Add tools info
-        tools_info = self._format_tools_info()
-        if tools_info:
-            system_content += "\n\n" + tools_info
-        
-        messages.append(LLMMessage("system", system_content))
-        
-        # Add recent context
-        recent_steps = memory.reasoning_trace[-5:] if memory.reasoning_trace else []
-        if recent_steps:
-            context_parts = []
-            for step in recent_steps:
-                if step.step_type == ReasoningStepType.THINK:
-                    context_parts.append(f"THINK: {step.content}")
-                elif step.step_type == ReasoningStepType.ACT:
-                    context_parts.append(f"ACT: {step.content}")
-            
-            if context_parts:
-                context_message = "Recent context:\n" + "\n".join(context_parts)
-                messages.append(LLMMessage("assistant", context_message))
-        
-        # Prompt for todo execution
-        messages.append(LLMMessage("user", f"Execute this todo: {todo.content}"))
-        
-        return messages
-    
-    def _format_tools_info(self) -> str:
-        """Format available tools information."""
-        tools = self.tool_registry.get_all_tools()
-        if not tools:
-            return ""
-        
-        tool_descriptions = ["AVAILABLE TOOLS:"]
-        for tool in tools:
-            param_parts = []
-            for param_name, param_info in tool.parameters.items():
-                param_type = param_info.get('type', 'Any')
-                required = param_info.get('required', False)
-                param_str = f"{param_name}: {param_type}"
-                if not required:
-                    param_str += " (optional)"
-                param_parts.append(param_str)
-            
-            params_str = ", ".join(param_parts)
-            tool_descriptions.append(f"- {tool.name}({params_str}): {tool.description}")
-        
-        return "\n".join(tool_descriptions)
-    
-    async def _execute_tool_action(self, tool_name: str, tool_params: Dict[str, Any], memory: ReactMemory) -> ToolResult:
-        """Execute a tool action."""
-        logger.info(f"Executing tool: {tool_name} with params: {tool_params}")
-        
-        # Execute tool
-        tool_result = await self.tool_registry.execute_tool(tool_name, **tool_params)
-        
-        # Create tool execution record
-        tool_execution = ToolExecution(
-            tool_name=tool_name,
-            params=tool_params,
-            result=tool_result,
-            timestamp=datetime.now()
-        )
-        memory.add_tool_execution(tool_execution)
-        
-        return tool_result
-    
-    def _parse_reasoning_response(self, response: str) -> ReasoningStep:
-        """Parse LLM response into reasoning step."""
-        response = response.strip()
-        
-        # Parse different step types
-        if response.upper().startswith("THINK:"):
-            content = response[6:].strip()
-            return ReasoningStep(
-                step_type=ReasoningStepType.THINK,
-                content=content
-            )
-        
-        elif response.upper().startswith("ACT:"):
-            action_text = response[4:].strip()
-            try:
-                # Parse action call
-                import re
-                match = re.match(r'(\w+)\((.*?)\)$', action_text.strip())
-                if match:
-                    tool_name = match.group(1)
-                    params_str = match.group(2).strip()
-                    
-                    # Parse parameters
-                    parameters = {}
-                    if params_str:
-                        # Handle param="value" format
-                        for param_match in re.finditer(r'(\w+)="([^"]*)"', params_str):
-                            key = param_match.group(1)
-                            value = param_match.group(2)
-                            parameters[key] = value
-                    
-                    return ReasoningStep(
-                        step_type=ReasoningStepType.ACT,
-                        content=action_text,
-                        tool_name=tool_name,
-                        tool_params=parameters
-                    )
-                else:
-                    raise ValueError(f"Invalid action format: {action_text}")
-                    
-            except Exception as e:
-                logger.error(f"Failed to parse action: {e}")
-                return ReasoningStep(
-                    step_type=ReasoningStepType.THINK,
-                    content=f"I tried to use a tool but the format was incorrect: {action_text}"
-                )
-        
-        elif response.upper().startswith("COMPLETE:"):
-            content = response[9:].strip()
-            return ReasoningStep(
-                step_type=ReasoningStepType.FINAL_ANSWER,
-                content=content
-            )
-        
-        elif "FINAL_ANSWER:" in response.upper():
-            final_answer_index = response.upper().find("FINAL_ANSWER:")
-            content = response[final_answer_index + 13:].strip()
-            return ReasoningStep(
-                step_type=ReasoningStepType.FINAL_ANSWER,
-                content=content
-            )
-        
-        else:
-            # Default to thinking
-            return ReasoningStep(
-                step_type=ReasoningStepType.THINK,
-                content=response
-            )
-    
-    def _get_llm_generate_func(self) -> Callable:
-        """Get LLM generation function."""
-        async def generate_func(messages):
-            llm_messages = [LLMMessage(msg["role"], msg["content"]) for msg in messages]
-            if self.llm:
-                return await self.llm.generate(llm_messages)
-            else:
-                return await self.llm_manager.generate(llm_messages)
-        
-        return generate_func
-    
-    def _get_sub_agent_name(self, todo: TodoItem) -> str:
-        """Get appropriate sub-agent name for todo."""
+    def _get_agent_name(self, todo: TodoItem) -> str:
+        """Get appropriate agent name for todo."""
         content_lower = todo.content.lower()
         
         if any(word in content_lower for word in ["calculate", "compute", "math"]):
@@ -553,23 +365,139 @@ Respond with one of:
         else:
             return "general_agent"
     
-    def _get_sub_agent_prompt(self, todo: TodoItem) -> str:
-        """Get specialized prompt for sub-agent based on todo type."""
-        agent_name = self._get_sub_agent_name(todo)
+    def _get_agent_instructions(self, todo: TodoItem) -> str:
+        """Get additional task-specific instructions for agent based on todo type."""
+        instructions = """- Focus solely on completing the assigned task
+- Always use the available tools with their exact names and required parameters
+- Provide clear, actionable results
+- Be concise and direct
+- When you have the result, use "result" action to complete the task"""
         
-        base_prompt = f"""You are a {agent_name} specialized in executing focused tasks efficiently.
+        return instructions
+    
+    def _get_agent_prompt(self, todo: TodoItem) -> str:
+        """Get specialized prompt for agent based on todo type."""
+        agent_name = self._get_agent_name(todo)
+        
+        # Get available tools from the tool registry
+        available_tools = self.tool_registry.get_all_tools()
+        tools_description = []
+        
+        for tool in available_tools:
+            # Create tool description with detailed parameters
+            params = []
+            if tool.parameters:
+                for param_name, param_info in tool.parameters.items():
+                    if isinstance(param_info, dict):
+                        param_type = param_info.get('type', 'str')
+                        required = param_info.get('required', False)
+                        param_desc = f"{param_name}: {param_type}"
+                        if not required:
+                            param_desc += " (optional)"
+                        params.append(param_desc)
+            
+            param_str = f"({', '.join(params)})" if params else "()"
+            tools_description.append(f"- {tool.name}{param_str}: {tool.description}")
+        
+        tools_list = "\n".join(tools_description) if tools_description else "- No tools available"
+        
+        base_prompt = f"""You are a {agent_name} specialized in executing focused tasks efficiently using ReAct reasoning.
 
 Your goal: {todo.content}
 
+Available tools:
+{tools_list}
+
+You operate in a loop of Thought, Action, and Observation. You must respond with structured JSON in one of these formats:
+
+For thinking/reasoning:
+{{"action": "think", "content": "Your reasoning about the problem and what to do next"}}
+
+For using a tool:
+{{"action": "use_tool", "tool_name": "tool_name", "parameters": {{"param1": "value1", "param2": "value2"}}}}
+
+For providing the final answer:
+{{"action": "result", "content": "Your complete answer to the user's question"}}
+
 Instructions:
 - Focus solely on completing the assigned task
-- Use available tools when appropriate
+- Always use the available tools with their exact names and required parameters
+- Always respond with valid JSON in the specified format
 - Provide clear, actionable results
 - Be concise and direct
-- Use RESULT: [your result] when finished
+- When you have the result, use "result" action to complete the task
 """
         
         return base_prompt
+    
+    async def _execute_with_react_sub_agent(
+        self,
+        task: str,
+        agent_name: str,
+        context: Dict[str, Any],
+        agent_role: str,
+        additional_instructions: str,
+        max_reasoning_steps: int
+    ) -> 'ReactAgentResult':
+        """Execute task using a fresh ReactAgent instance (isolated memory)."""
+        from .react_agent import ReactAgent
+        import time
+        
+        start_time = time.time()
+        
+        try:
+            # Create a new ReactAgent instance for this task (isolated memory)
+            sub_agent = ReactAgent(
+                name=f"{agent_name}_{task[:20]}",  # Unique name per task
+                llm_manager=self.llm_manager,
+                tool_registry=self.tool_registry,
+                max_reasoning_steps=max_reasoning_steps,
+                max_errors=3,
+                task_goal=task,
+                agent_role=agent_role,
+                additional_instructions=additional_instructions
+            )
+            
+            # Since task_goal is already in system prompt, just pass context if available
+            # if context:
+            #     context_message = f"Context: {context}"
+            #     result = await self._execute_with_direct_tools(sub_agent, context_message)
+            # else:
+            #     # Task is already in system prompt, so pass a simple start message
+            #     result = await self._execute_with_direct_tools(sub_agent, "Begin working on the task.")
+            
+            result = await self._execute_with_direct_tools(sub_agent, "Complete the task.")
+            
+            execution_time = time.time() - start_time
+            
+            # Return ReactAgentResult format for compatibility
+            return ReactAgentResult(
+                success=True,
+                result=result,
+                reasoning_steps=sub_agent.memory.reasoning_trace,
+                tool_executions=sub_agent.memory.tool_executions,
+                execution_time=execution_time,
+                metadata={"agent_name": agent_name, "task": task}
+            )
+            
+        except Exception as e:
+            execution_time = time.time() - start_time
+            return ReactAgentResult(
+                success=False,
+                error=str(e),
+                execution_time=execution_time,
+                metadata={"agent_name": agent_name, "task": task}
+            )
+    
+    async def _execute_with_direct_tools(self, sub_agent: ReactAgent, task: str) -> str:
+        """Execute sub-agent with direct access to parent tools."""
+        # Give sub-agent direct access to parent's tool registry
+        sub_agent.tool_registry = self.tool_registry
+        
+        # Execute the task - sub-agent can now execute tools directly
+        result = await sub_agent.solve(task)
+        
+        return result
     
     def _get_parent_problem(self, memory: ReactMemory) -> str:
         """Get the original problem from memory."""
@@ -638,6 +566,8 @@ Provide a clear, comprehensive final answer that addresses the original problem 
         # Generate final answer
         messages = [LLMMessage("user", final_answer_prompt)]
         
+        print(f"Final answer prompt=======: {final_answer_prompt}")
+        
         if self.llm:
             response = await self.llm.generate(messages)
         else:
@@ -660,17 +590,12 @@ Provide a clear, comprehensive final answer that addresses the original problem 
         """Get the todo manager instance."""
         return self.todo_manager
     
-    def get_sub_agent_manager(self) -> SubAgentManager:
-        """Get the sub-agent manager instance."""
-        return self.sub_agent_manager
     
     async def get_planning_summary(self) -> Dict[str, Any]:
         """Get summary of planning state."""
         progress = await self.todo_manager.get_progress_summary()
-        sub_agents = self.sub_agent_manager.list_sub_agents()
         
         return {
             "todo_progress": progress,
-            "sub_agents": sub_agents,
             "todo_tree": self.todo_manager.get_todo_tree()
         }
