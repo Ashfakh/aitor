@@ -6,11 +6,11 @@ Demonstrates how planning agents break down sales tasks into organized todos.
 import asyncio
 import logging
 from aitor.planning_agent import PlanningReactAgentBuilder
-from aitor.llm import LLMManager, Message
+from aitor.llm import LLMManager
 from aitor.tools import ToolRegistry
 from aitor.todo import TodoStatus
 from aitor.logging_config import setup_aitor_logging
-from chat_tools import CHAT_TOOLS, send_message, book_demo_call, get_user_input
+from chat_tools import CHAT_TOOLS
 
 # Setup logging
 setup_aitor_logging("INFO")
@@ -117,12 +117,12 @@ async def run_structured_sales_conversation():
         print("🚀 Starting structured sales conversation...")
         response = await agent.solve(sales_objective)
         
-        print(f"\n✅ CONVERSATION RESULT:")
+        print("\n✅ CONVERSATION RESULT:")
         print("-" * 40)
         print(response)
         
         # Show planning breakdown
-        print(f"\n📊 PLANNING BREAKDOWN:")
+        print("\n📊 PLANNING BREAKDOWN:")
         print("-" * 40)
         
         # Show all todos created
@@ -199,13 +199,13 @@ async def demo_planning_conversation():
         # Execute the planned conversation
         result = await agent.solve(objective)
         
-        print(f"\n🎯 DEMO RESULT:")
+        print("\n🎯 DEMO RESULT:")
         print("-" * 40)
         print(result)
         
         # Show the planning structure
         todos = await agent.get_current_todos()
-        print(f"\n📈 SALES PLANNING STRUCTURE:")
+        print("\n📈 SALES PLANNING STRUCTURE:")
         print("-" * 40)
         print(f"Total planned tasks: {len(todos)}")
         

@@ -9,8 +9,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Union
-from concurrent.futures import TimeoutError as FutureTimeoutError
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

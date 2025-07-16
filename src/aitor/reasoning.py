@@ -3,16 +3,13 @@ ReAct reasoning engine for intelligent agents.
 Implements the Think -> Act -> Observe reasoning loop.
 """
 
-import asyncio
-import json
 import logging
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .llm import BaseLLM, LLMManager, Message as LLMMessage
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, Literal
+from typing import Literal
 from .memory import ReactMemory, ReasoningStep, ReasoningStepType, MessageRole
 from .tools import ToolRegistry, ToolResult, ToolExecution
 from .logging_config import log_prompt, log_response, log_reasoning_step, log_tool_execution, log_section_start, log_section_end

@@ -70,12 +70,12 @@ Key principles:
         # Execute planning
         response = await agent.solve(problem)
         
-        print(f"\nFINAL ANSWER:")
+        print("\nFINAL ANSWER:")
         print("-"*40)
         print(response)
         
         # Show planning details
-        print(f"\nPLANNING DETAILS:")
+        print("\nPLANNING DETAILS:")
         print("-"*40)
         
         # Show todos

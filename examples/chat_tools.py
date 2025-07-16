@@ -2,11 +2,8 @@
 Interactive chat tools for stdin/stdout communication.
 """
 
-import asyncio
-import sys
-from typing import Any, Dict
 
-from aitor.tools import Tool, ToolResult
+from aitor.tools import Tool
 
 
 def get_user_input(prompt: str) -> str:

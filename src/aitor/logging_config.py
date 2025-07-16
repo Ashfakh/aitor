@@ -114,7 +114,7 @@ class AitorLogger:
     
     def log_todo_created(self, todo_id: str, content: str, priority: str):
         """Log todo creation."""
-        self.logger.info(f"\n📝 TODO CREATED")
+        self.logger.info("\n📝 TODO CREATED")
         self.logger.info("-" * 30)
         self.logger.info(f"ID: {todo_id}")
         self.logger.info(f"Priority: {priority}")
@@ -134,7 +134,7 @@ class AitorLogger:
         old_icon = status_icons.get(old_status, '❓')
         new_icon = status_icons.get(new_status, '❓')
         
-        self.logger.info(f"\n📋 TODO STATUS CHANGE")
+        self.logger.info("\n📋 TODO STATUS CHANGE")
         self.logger.info("-" * 30)
         self.logger.info(f"ID: {todo_id}")
         self.logger.info(f"Content: {content}")
@@ -143,7 +143,7 @@ class AitorLogger:
     
     def log_sub_agent_execution(self, agent_name: str, task: str, result: Optional[str] = None, error: Optional[str] = None):
         """Log sub-agent execution."""
-        self.logger.info(f"\n🤖 SUB-AGENT EXECUTION")
+        self.logger.info("\n🤖 SUB-AGENT EXECUTION")
         self.logger.info("-" * 40)
         self.logger.info(f"Agent: {agent_name}")
         self.logger.info(f"Task: {task}")
@@ -169,7 +169,7 @@ class AitorLogger:
     
     def log_planning_summary(self, total_todos: int, completed: int, failed: int, pending: int):
         """Log planning progress summary."""
-        self.logger.info(f"\n📊 PLANNING SUMMARY")
+        self.logger.info("\n📊 PLANNING SUMMARY")
         self.logger.info("-" * 30)
         self.logger.info(f"Total Todos: {total_todos}")
         self.logger.info(f"Completed: {completed}")

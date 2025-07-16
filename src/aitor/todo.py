@@ -4,12 +4,11 @@ Enables agents to break down complex problems into manageable tasks.
 """
 
 import asyncio
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -55,7 +54,6 @@ class TodoItem:
     
     def mark_completed(self, result: Optional[str] = None):
         """Mark todo as completed."""
-        old_status = self.status
         self.status = TodoStatus.COMPLETED
         self.completed_at = datetime.now()
         self.updated_at = datetime.now()
@@ -63,14 +61,12 @@ class TodoItem:
         
     def mark_failed(self, error: str):
         """Mark todo as failed."""
-        old_status = self.status
         self.status = TodoStatus.FAILED
         self.updated_at = datetime.now()
         self.error = error
         
     def mark_in_progress(self):
         """Mark todo as in progress."""
-        old_status = self.status
         self.status = TodoStatus.IN_PROGRESS
         self.updated_at = datetime.now()
         

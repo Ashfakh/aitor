@@ -207,8 +207,8 @@ class Aitorflow:
             print(f"Workflow '{self.name}' is empty")
             return
             
-        print(f"```mermaid")
-        print(f"flowchart TD")
+        print("```mermaid")
+        print("flowchart TD")
         print(f"    %% Workflow: {self.name}")
         
         # Track processed edges to avoid duplicates

@@ -32,3 +32,8 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/Ashfakh/aitor"
 "Bug Tracker" = "https://github.com/Ashfakh/aitor/issues" 
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.3",
+]

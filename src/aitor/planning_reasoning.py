@@ -3,11 +3,8 @@ Planning-based reasoning engine for intelligent agents.
 Implements task planning, todo management, and sub-agent execution like Claude Code.
 """
 
-import asyncio
-import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .react_agent import ReactAgent
@@ -16,11 +13,10 @@ from .llm import BaseLLM, LLMManager, Message as LLMMessage
 from pydantic import BaseModel, Field
 from typing import List as ListType
 from .memory import ReactMemory, ReasoningStep, ReasoningStepType, MessageRole
-from .tools import ToolRegistry, ToolResult, ToolExecution
+from .tools import ToolRegistry, ToolExecution
 from .todo import TodoManager, TodoItem, TodoStatus, TodoPriority
 from .logging_config import (
-    log_prompt, log_response, log_reasoning_step, log_tool_execution, 
-    log_section_start, log_section_end, log_todo_created, log_todo_status_change, 
+    log_reasoning_step, log_section_start, log_section_end, log_todo_created, log_todo_status_change, 
     log_sub_agent_execution, log_planning_summary
 )
 

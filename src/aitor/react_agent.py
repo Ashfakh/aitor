@@ -3,7 +3,6 @@ ReAct Agent implementation building on the Aitor framework.
 Combines memory-enabled agents with ReAct reasoning and tool execution.
 """
 
-import asyncio
 import logging
 import uuid
 from typing import Any, Dict, List, Optional, Union
@@ -12,7 +11,7 @@ from .aitor import Aitor
 from .llm import BaseLLM, LLMManager
 from .memory import ReactMemory, MessageRole
 from .reasoning import ReasoningEngine
-from .tools import ToolRegistry, Tool, tool, default_registry
+from .tools import ToolRegistry, Tool, default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +107,7 @@ class ReactAgent(Aitor[ReactMemory]):
             # Use reasoning engine to solve the problem
             solution = await self.reasoning_engine.solve_problem(problem, self.memory)
             
-            logger.info(f"Problem solved successfully")
+            logger.info("Problem solved successfully")
             return solution
             
         except Exception as e:

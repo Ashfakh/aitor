@@ -12,8 +12,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 # Structured response models
-from pydantic import BaseModel, Field, Discriminator
-from typing import Literal
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

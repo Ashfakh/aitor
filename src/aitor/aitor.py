@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar, Any, Optional, Callable
+from typing import Generic, TypeVar, Any, Optional
 import asyncio
 import uuid
 import concurrent.futures

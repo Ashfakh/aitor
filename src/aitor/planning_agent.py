@@ -12,7 +12,7 @@ from .aitor import Aitor
 from .llm import BaseLLM, LLMManager
 from .memory import ReactMemory, MessageRole
 from .planning_reasoning import PlanningReasoningEngine
-from .tools import ToolRegistry, Tool, tool, default_registry
+from .tools import ToolRegistry, Tool
 from .todo import TodoManager, TodoItem, TodoStatus
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ class PlanningReactAgent(Aitor[ReactMemory]):
             # Use planning reasoning engine to solve the problem
             solution = await self.reasoning_engine.solve_problem(problem, self.memory)
             
-            logger.info(f"Problem solved successfully with planning")
+            logger.info("Problem solved successfully with planning")
             return solution
             
         except Exception as e:
