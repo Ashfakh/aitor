@@ -34,7 +34,12 @@ jobs:
     - name: Run linting
       run: ruff check .
     - name: Run tests
-      run: pytest --tb=short
+      run: |
+        if [ -n "$(find tests -name '*.py' -type f 2>/dev/null)" ]; then
+          pytest --tb=short
+        else
+          echo "No tests found, skipping test execution"
+        fi
 
   build:
     needs: test
