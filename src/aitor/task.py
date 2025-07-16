@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, List, Union, Optional
+from typing import Any, Callable, Dict, List, Union, Optional
 import logging
 
 logger = logging.getLogger(__name__)
