@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class TodoStatus(Enum):
     """Status of a todo item."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -25,6 +26,7 @@ class TodoStatus(Enum):
 
 class TodoPriority(Enum):
     """Priority levels for todo items."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -34,7 +36,7 @@ class TodoPriority(Enum):
 @dataclass
 class TodoItem:
     """Represents a single todo item in the task plan."""
-    
+
     id: str
     content: str
     status: TodoStatus
@@ -47,35 +49,35 @@ class TodoItem:
     metadata: Dict[str, Any] = field(default_factory=dict)
     result: Optional[str] = None
     error: Optional[str] = None
-    
+
     def __post_init__(self):
         if not self.id:
             self.id = str(uuid4())
-    
+
     def mark_completed(self, result: Optional[str] = None):
         """Mark todo as completed."""
         self.status = TodoStatus.COMPLETED
         self.completed_at = datetime.now()
         self.updated_at = datetime.now()
         self.result = result
-        
+
     def mark_failed(self, error: str):
         """Mark todo as failed."""
         self.status = TodoStatus.FAILED
         self.updated_at = datetime.now()
         self.error = error
-        
+
     def mark_in_progress(self):
         """Mark todo as in progress."""
         self.status = TodoStatus.IN_PROGRESS
         self.updated_at = datetime.now()
-        
+
     def add_subtask(self, subtask_id: str):
         """Add a subtask to this todo."""
         if subtask_id not in self.subtasks:
             self.subtasks.append(subtask_id)
             self.updated_at = datetime.now()
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert todo to dictionary representation."""
         return {
@@ -85,16 +87,18 @@ class TodoItem:
             "priority": self.priority.value,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": self.completed_at.isoformat()
+            if self.completed_at
+            else None,
             "parent_id": self.parent_id,
             "subtasks": self.subtasks,
             "metadata": self.metadata,
             "result": self.result,
-            "error": self.error
+            "error": self.error,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TodoItem':
+    def from_dict(cls, data: Dict[str, Any]) -> "TodoItem":
         """Create todo from dictionary representation."""
         return cls(
             id=data["id"],
@@ -103,37 +107,39 @@ class TodoItem:
             priority=TodoPriority(data["priority"]),
             created_at=datetime.fromisoformat(data["created_at"]),
             updated_at=datetime.fromisoformat(data["updated_at"]),
-            completed_at=datetime.fromisoformat(data["completed_at"]) if data["completed_at"] else None,
+            completed_at=datetime.fromisoformat(data["completed_at"])
+            if data["completed_at"]
+            else None,
             parent_id=data.get("parent_id"),
             subtasks=data.get("subtasks", []),
             metadata=data.get("metadata", {}),
             result=data.get("result"),
-            error=data.get("error")
+            error=data.get("error"),
         )
 
 
 class TodoManager:
     """
     Manages todo items for task planning and execution.
-    
+
     Provides capabilities for:
     - Creating and organizing todos
     - Tracking progress through task hierarchies
     - Executing todos with sub-agents
     - Managing dependencies between tasks
     """
-    
+
     def __init__(self):
         self.todos: Dict[str, TodoItem] = {}
         self.execution_order: List[str] = []
         self._lock = asyncio.Lock()
-    
+
     async def create_todo(
         self,
         content: str,
         priority: TodoPriority = TodoPriority.MEDIUM,
         parent_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> TodoItem:
         """Create a new todo item."""
         async with self._lock:
@@ -143,27 +149,27 @@ class TodoManager:
                 status=TodoStatus.PENDING,
                 priority=priority,
                 parent_id=parent_id,
-                metadata=metadata or {}
+                metadata=metadata or {},
             )
-            
+
             self.todos[todo.id] = todo
             self.execution_order.append(todo.id)
-            
+
             # Add to parent's subtasks if parent exists
             if parent_id and parent_id in self.todos:
                 self.todos[parent_id].add_subtask(todo.id)
-            
+
             logger.info(f"Created todo: {todo.id} - {content}")
             return todo
-    
+
     async def get_todo(self, todo_id: str) -> Optional[TodoItem]:
         """Get todo by ID."""
         return self.todos.get(todo_id)
-    
+
     async def get_todos_by_status(self, status: TodoStatus) -> List[TodoItem]:
         """Get all todos with specific status."""
         return [todo for todo in self.todos.values() if todo.status == status]
-    
+
     async def get_next_pending_todo(self) -> Optional[TodoItem]:
         """Get the next pending todo to execute."""
         for todo_id in self.execution_order:
@@ -173,16 +179,19 @@ class TodoManager:
                 if await self._are_dependencies_completed(todo):
                     return todo
         return None
-    
+
     async def _are_dependencies_completed(self, todo: TodoItem) -> bool:
         """Check if all dependencies for a todo are completed."""
         # For now, we'll use a simple parent-child dependency model
         if todo.parent_id:
             parent = self.todos.get(todo.parent_id)
-            if parent and parent.status not in [TodoStatus.COMPLETED, TodoStatus.FAILED]:
+            if parent and parent.status not in [
+                TodoStatus.COMPLETED,
+                TodoStatus.FAILED,
+            ]:
                 return False
         return True
-    
+
     async def mark_todo_completed(self, todo_id: str, result: Optional[str] = None):
         """Mark a todo as completed."""
         async with self._lock:
@@ -190,7 +199,7 @@ class TodoManager:
             if todo:
                 todo.mark_completed(result)
                 logger.info(f"Completed todo: {todo_id} - {todo.content}")
-    
+
     async def mark_todo_failed(self, todo_id: str, error: str):
         """Mark a todo as failed."""
         async with self._lock:
@@ -198,7 +207,7 @@ class TodoManager:
             if todo:
                 todo.mark_failed(error)
                 logger.error(f"Failed todo: {todo_id} - {todo.content}: {error}")
-    
+
     async def mark_todo_in_progress(self, todo_id: str):
         """Mark a todo as in progress."""
         async with self._lock:
@@ -206,47 +215,55 @@ class TodoManager:
             if todo:
                 todo.mark_in_progress()
                 logger.info(f"Started todo: {todo_id} - {todo.content}")
-    
+
     async def get_progress_summary(self) -> Dict[str, Any]:
         """Get summary of todo progress."""
         status_counts = {}
         for status in TodoStatus:
-            status_counts[status.value] = len([
-                todo for todo in self.todos.values() 
-                if todo.status == status
-            ])
-        
+            status_counts[status.value] = len(
+                [todo for todo in self.todos.values() if todo.status == status]
+            )
+
         total_todos = len(self.todos)
         completed_todos = status_counts.get(TodoStatus.COMPLETED.value, 0)
-        
+
         return {
             "total_todos": total_todos,
             "completed_todos": completed_todos,
-            "progress_percentage": (completed_todos / total_todos * 100) if total_todos > 0 else 0,
+            "progress_percentage": (completed_todos / total_todos * 100)
+            if total_todos > 0
+            else 0,
             "status_breakdown": status_counts,
-            "current_todo": await self.get_next_pending_todo()
+            "current_todo": await self.get_next_pending_todo(),
         }
-    
-    
+
     def get_all_todos(self) -> List[TodoItem]:
         """Get all todos in execution order."""
-        return [self.todos[todo_id] for todo_id in self.execution_order if todo_id in self.todos]
-    
+        return [
+            self.todos[todo_id]
+            for todo_id in self.execution_order
+            if todo_id in self.todos
+        ]
+
     def get_todo_tree(self) -> Dict[str, Any]:
         """Get todos organized in a tree structure."""
         root_todos = [todo for todo in self.todos.values() if not todo.parent_id]
-        
+
         def build_tree(todo: TodoItem) -> Dict[str, Any]:
             return {
                 "todo": todo.to_dict(),
-                "subtasks": [build_tree(self.todos[subtask_id]) for subtask_id in todo.subtasks if subtask_id in self.todos]
+                "subtasks": [
+                    build_tree(self.todos[subtask_id])
+                    for subtask_id in todo.subtasks
+                    if subtask_id in self.todos
+                ],
             }
-        
+
         return {
             "root_todos": [build_tree(todo) for todo in root_todos],
-            "total_todos": len(self.todos)
+            "total_todos": len(self.todos),
         }
-    
+
     async def clear_todos(self):
         """Clear all todos."""
         async with self._lock:

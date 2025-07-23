@@ -16,9 +16,9 @@ class Aitor(Generic[T]):
     # Class-level thread pool for all aitors
     _thread_pool = concurrent.futures.ThreadPoolExecutor(
         max_workers=None,  # Let the system determine optimal number based on CPU count, Maybe make in an ENV variable
-        thread_name_prefix="AitorThread"
+        thread_name_prefix="AitorThread",
     )
-    
+
     # Add a thread-local storage for event loops
     _thread_local = threading.local()
 
@@ -67,21 +67,21 @@ class Aitor(Generic[T]):
     def memory(self) -> T:
         with self._lock:
             return self._memory
-    
+
     @property
     def workflow(self) -> Optional[Aitorflow]:
         """
         Get the aitor's attached workflow.
-        
+
         Returns:
             Optional[Aitorflow]: The attached workflow, if any
         """
         return self._workflow
-        
+
     def attach_workflow(self, workflow: Aitorflow) -> None:
         """
         Attach an Aitorflow to this aitor.
-        
+
         Args:
             workflow: The workflow to attach
         """
@@ -90,14 +90,14 @@ class Aitor(Generic[T]):
     def create_workflow(self, root_task: Task) -> None:
         """
         Create a new Aitorflow.
-        
+
         Args:
             name: Optional name for the workflow
         """
         workflow = Aitorflow(name=self._name)
         workflow.add_root(root_task)
-        self.attach_workflow(workflow)        
-        
+        self.attach_workflow(workflow)
+
     def detach_workflow(self) -> None:
         """
         Remove the currently attached workflow.
@@ -114,12 +114,14 @@ class Aitor(Generic[T]):
         Returns:
             T: The loaded memory object
         """
-        raise NotImplementedError("_load_memory method must be implemented by subclasses")
+        raise NotImplementedError(
+            "_load_memory method must be implemented by subclasses"
+        )
 
     async def on_receive(self, message: Any):
         """
         Handle incoming messages and orchestrate tasks.
-        
+
         If a workflow is attached, it will be executed with the received message.
 
         Args:
@@ -152,7 +154,7 @@ class Aitor(Generic[T]):
         """
         Get or create an event loop for the current thread.
         """
-        if not hasattr(cls._thread_local, 'loop'):
+        if not hasattr(cls._thread_local, "loop"):
             cls._thread_local.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(cls._thread_local.loop)
         return cls._thread_local.loop
@@ -165,9 +167,10 @@ class Aitor(Generic[T]):
         Args:
             message: The message to be processed
         """
+
         def run_in_new_thread():
             loop = self.get_loop()
-            
+
             try:
                 logger.info(
                     f"Aitor.tell executing - aitor_id: {self._id}, aitor_name: {self._name}, "
@@ -179,7 +182,7 @@ class Aitor(Generic[T]):
             except Exception as e:
                 logger.error(
                     f"Error in aitor processing message - aitor_id: {self._id}, error: {str(e)}",
-                    exc_info=True
+                    exc_info=True,
                 )
 
         # Submit the task to thread pool
@@ -214,7 +217,7 @@ class Aitor(Generic[T]):
             external_storage: The storage mechanism to persist memory
         """
         pass
-    
+
     @classmethod
     def shutdown(cls):
         """
@@ -223,9 +226,9 @@ class Aitor(Generic[T]):
         """
         # Shutdown thread pool first
         cls._thread_pool.shutdown(wait=True)
-        
+
         # Clean up any event loops in thread local storage
-        if hasattr(cls._thread_local, 'loop'):
+        if hasattr(cls._thread_local, "loop"):
             try:
                 loop = cls._thread_local.loop
                 if loop.is_running():

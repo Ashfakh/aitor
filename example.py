@@ -1,31 +1,37 @@
 from aitor.aitorflows import Aitorflow
 from aitor.task import task
 
+
 # Define tasks using the decorator
 @task
 def task1(x):
     print(f"Task 1 processing: {x}")
     return x * 2
 
+
 @task
 def task2(x):
     print(f"Task 2 processing: {x}")
     return x + 10
+
 
 @task
 def task3(x):
     print(f"Task 3 processing: {x}")
     return x * 3
 
+
 @task
 def task4(x, y):
     print(f"Task 4 processing inputs: {x}, {y}")
     return x + y
 
+
 @task
 def task5(x):
     print(f"Task 5 processing: {x}")
     return x - 5
+
 
 # Create workflow
 workflow = Aitorflow(name="Example Workflow")
@@ -44,4 +50,4 @@ workflow.print()
 
 # Execute workflow
 results = workflow.execute(initial_input=5)
-print("Results:", results) 
+print("Results:", results)
