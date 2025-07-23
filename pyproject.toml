@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aitor"
-version = "0.2.0"
+version = "1.0.0"
 description = "A Python framework for building intelligent, memory-enabled agents with ReAct reasoning"
 authors = [{name = "Ashfakh", email = "ashfakhrithu@gmail.com"}]
 readme = "README.md"
@@ -37,4 +37,5 @@ classifiers = [
 dev = [
     "mypy>=1.17.0",
     "ruff>=0.12.3",
+    "pytest>=6.0.0",
 ]
