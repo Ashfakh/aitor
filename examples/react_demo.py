@@ -6,11 +6,13 @@ import asyncio
 from aitor.react_agent import ReactAgentBuilder
 from aitor.llm import LLMManager
 from aitor.tools import ToolRegistry
-from aitor.logging_config import setup_aitor_logging
+from aitor.logging_config import setup_aitor_logging, disable_aitor_logging, enable_aitor_logging
 from example_tools import EXAMPLE_TOOLS
 
 # Setup enhanced logging
-setup_aitor_logging("INFO")
+# setup_aitor_logging("INFO")
+# Optional: Disable verbose logging
+# disable_aitor_logging()
 
 
 async def debug_demo():
@@ -29,13 +31,16 @@ async def debug_demo():
         }
     )
     
-    # Create agent with focused system prompt
+    # Create agent with dynamic prompt construction
     tool_registry = ToolRegistry()
     agent = await (ReactAgentBuilder()
                    .name("DebugAgent")
                    .llm_manager(llm_manager)
                    .tool_registry(tool_registry)
                    .max_reasoning_steps(8)
+                   .agent_role("mathematical calculation agent")
+                   .task_goal("Solve mathematical problems step by step using available tools")
+                   .additional_instructions("Show detailed reasoning and use tools for all calculations")
                    .build())
     
     # Register tools

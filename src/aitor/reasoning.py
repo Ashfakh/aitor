@@ -42,7 +42,6 @@ class ReasoningEngine:
         llm_manager: Optional[LLMManager] = None,
         max_reasoning_steps: int = 20,
         max_errors: int = 3,
-        system_prompt: Optional[str] = None,
         task_goal: Optional[str] = None,
         additional_instructions: Optional[str] = None,
         agent_role: Optional[str] = None
@@ -56,7 +55,6 @@ class ReasoningEngine:
             llm_manager: LLM manager for multiple providers
             max_reasoning_steps: Maximum reasoning steps per problem
             max_errors: Maximum errors before stopping
-            system_prompt: Custom system prompt for the agent (if provided, overrides default)
             task_goal: Specific task or goal for the agent
             additional_instructions: Additional context-specific instructions
             agent_role: Role description for the agent (e.g., "calculator_agent")
@@ -69,39 +67,24 @@ class ReasoningEngine:
         self.task_goal = task_goal
         self.additional_instructions = additional_instructions
         self.agent_role = agent_role
-        self.custom_system_prompt = system_prompt
         
         if not self.llm and not self.llm_manager:
             raise ValueError("Either llm or llm_manager must be provided")
     
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, agent_name: Optional[str] = None) -> str:
         """Build system prompt from components."""
-        # Base ReAct prompt with structured response format
-        base_prompt = self._get_base_react_prompt()
+        # Start with agent identity
+        if agent_name and self.agent_role:
+            prompt = f"You are {agent_name}, a {self.agent_role} using ReAct (Reasoning and Acting) methodology."
+        elif agent_name:
+            prompt = f"You are {agent_name}, a ReAct (Reasoning and Acting) agent."
+        elif self.agent_role:
+            prompt = f"You are a {self.agent_role} using ReAct (Reasoning and Acting) methodology."
+        else:
+            prompt = "You are a ReAct (Reasoning and Acting) agent."
         
-        # Add task-specific information
-        if self.task_goal:
-            base_prompt += f"\n\nYour current task: {self.task_goal}"
-        
-        if self.agent_role:
-            base_prompt = base_prompt.replace(
-                "You are a ReAct (Reasoning and Acting) agent",
-                f"You are a {self.agent_role} using ReAct (Reasoning and Acting) methodology"
-            )
-        
-        if self.additional_instructions:
-            base_prompt += f"\n\nAdditional instructions:\n{self.additional_instructions}"
-        
-        # Add available tools information
-        tools_info = self._format_tools_info()
-        if tools_info:
-            base_prompt += "\n\n" + tools_info
-        
-        return base_prompt
-    
-    def _get_base_react_prompt(self) -> str:
-        """Get base ReAct prompt with structured response format."""
-        return """You are a ReAct (Reasoning and Acting) agent. Your task is to solve problems by thinking step by step and using available tools when needed.
+        # Add base ReAct instructions
+        prompt += """\n\nYour task is to solve problems by thinking step by step and using available tools when needed.
 
 You operate in a loop of Thought, Action, and Observation:
 1. Thought: Analyze the problem and plan your approach
@@ -136,6 +119,21 @@ Important:
 - Provide a clear, complete final answer when you have enough information
 - If you encounter errors, adapt your approach and try alternatives
 - Always respond with valid JSON matching the schema above"""
+        
+        # Add task-specific information
+        if self.task_goal:
+            prompt += f"\n\nYour current task: {self.task_goal}"
+        
+        if self.additional_instructions:
+            prompt += f"\n\nAdditional instructions:\n{self.additional_instructions}"
+        
+        # Add available tools information
+        tools_info = self._format_tools_info()
+        if tools_info:
+            prompt += "\n\n" + tools_info
+        
+        return prompt
+    
     
     async def solve_problem(self, problem: str, memory: ReactMemory) -> str:
         """
@@ -280,8 +278,9 @@ Important:
         """
         messages = []
         
-        # System message (build dynamically to include current tools)
-        system_prompt = self.custom_system_prompt or self._build_system_prompt()
+        # System message (build dynamically to include current tools and agent name)
+        agent_name = memory.agent_name if memory else None
+        system_prompt = self._build_system_prompt(agent_name)
         messages.append(LLMMessage("system", system_prompt))
         
         # Add conversation history

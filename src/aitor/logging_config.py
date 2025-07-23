@@ -42,6 +42,7 @@ class AitorLogger:
     def __init__(self, name: str = "aitor"):
         self.name = name
         self.logger = logging.getLogger(name)
+        self._enabled = False  # Logging disabled by default until setup_aitor_logging is called
         self._setup_logging()
     
     def _setup_logging(self):
@@ -66,6 +67,9 @@ class AitorLogger:
     
     def log_prompt(self, component: str, prompt: str, context: Optional[Dict[str, Any]] = None):
         """Log LLM prompt with context."""
+        if not self._enabled:
+            return
+            
         separator = "=" * 80
         self.logger.info(f"\n{separator}")
         self.logger.info(f"🤖 {component.upper()} - LLM PROMPT")
@@ -80,6 +84,9 @@ class AitorLogger:
     
     def log_response(self, component: str, response: str, context: Optional[Dict[str, Any]] = None):
         """Log LLM response with context."""
+        if not self._enabled:
+            return
+            
         separator = "=" * 80
         self.logger.info(f"\n{separator}")
         self.logger.info(f"🧠 {component.upper()} - LLM RESPONSE")
@@ -94,6 +101,9 @@ class AitorLogger:
     
     def log_reasoning_step(self, component: str, step_type: str, content: str, metadata: Optional[Dict[str, Any]] = None):
         """Log reasoning step with details."""
+        if not self._enabled:
+            return
+            
         icon = {
             'THINK': '💭',
             'ACT': '⚡',
@@ -114,6 +124,9 @@ class AitorLogger:
     
     def log_todo_created(self, todo_id: str, content: str, priority: str):
         """Log todo creation."""
+        if not self._enabled:
+            return
+            
         self.logger.info("\n📝 TODO CREATED")
         self.logger.info("-" * 30)
         self.logger.info(f"ID: {todo_id}")
@@ -123,6 +136,9 @@ class AitorLogger:
     
     def log_todo_status_change(self, todo_id: str, content: str, old_status: str, new_status: str):
         """Log todo status change."""
+        if not self._enabled:
+            return
+            
         status_icons = {
             'pending': '⏳',
             'in_progress': '🔄',
@@ -143,6 +159,9 @@ class AitorLogger:
     
     def log_sub_agent_execution(self, agent_name: str, task: str, result: Optional[str] = None, error: Optional[str] = None):
         """Log sub-agent execution."""
+        if not self._enabled:
+            return
+            
         self.logger.info("\n🤖 SUB-AGENT EXECUTION")
         self.logger.info("-" * 40)
         self.logger.info(f"Agent: {agent_name}")
@@ -157,6 +176,9 @@ class AitorLogger:
     
     def log_tool_execution(self, tool_name: str, params: Dict[str, Any], result: Any, success: bool):
         """Log tool execution."""
+        if not self._enabled:
+            return
+            
         icon = "🔧" if success else "❌"
         
         self.logger.info(f"\n{icon} TOOL EXECUTION")
@@ -169,6 +191,9 @@ class AitorLogger:
     
     def log_planning_summary(self, total_todos: int, completed: int, failed: int, pending: int):
         """Log planning progress summary."""
+        if not self._enabled:
+            return
+            
         self.logger.info("\n📊 PLANNING SUMMARY")
         self.logger.info("-" * 30)
         self.logger.info(f"Total Todos: {total_todos}")
@@ -180,6 +205,9 @@ class AitorLogger:
     
     def log_section_start(self, section_name: str):
         """Log the start of a major section."""
+        if not self._enabled:
+            return
+            
         separator = "=" * 80
         self.logger.info(f"\n{separator}")
         self.logger.info(f"🚀 {section_name.upper()}")
@@ -187,6 +215,9 @@ class AitorLogger:
     
     def log_section_end(self, section_name: str):
         """Log the end of a major section."""
+        if not self._enabled:
+            return
+            
         separator = "=" * 80
         self.logger.info(f"\n{separator}")
         self.logger.info(f"🎉 {section_name.upper()} COMPLETED")
@@ -217,6 +248,9 @@ def setup_aitor_logging(level: str = "INFO"):
     for logger_name in ['aitor', 'aitor.reasoning', 'aitor.planning_reasoning', 'aitor.tools', 'aitor.sub_agent']:
         logger = logging.getLogger(logger_name)
         logger.setLevel(log_level)
+    
+    # Enable Aitor logging when setup is called
+    aitor_logger._enabled = True
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -273,3 +307,30 @@ def log_section_start(section_name: str):
 def log_section_end(section_name: str):
     """Log section end."""
     aitor_logger.log_section_end(section_name)
+
+
+def enable_aitor_logging():
+    """Enable Aitor structured logging."""
+    aitor_logger._enabled = True
+    if aitor_logger._enabled:
+        aitor_logger.logger.info("Aitor logging enabled")
+
+
+def disable_aitor_logging():
+    """Disable Aitor structured logging."""
+    if aitor_logger._enabled:
+        aitor_logger.logger.info("Disabling Aitor logging...")
+    aitor_logger._enabled = False
+
+
+def is_aitor_logging_enabled() -> bool:
+    """Check if Aitor logging is enabled."""
+    return aitor_logger._enabled
+
+
+def set_aitor_logging(enabled: bool):
+    """Set Aitor logging state."""
+    if enabled:
+        enable_aitor_logging()
+    else:
+        disable_aitor_logging()

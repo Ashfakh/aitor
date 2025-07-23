@@ -29,6 +29,15 @@ from .planning_agent import PlanningReactAgent, PlanningReactAgentBuilder, creat
 from .planning_reasoning import PlanningReasoningEngine
 from .todo import TodoManager, TodoItem, TodoStatus, TodoPriority
 
+# Logging utilities
+from .logging_config import (
+    setup_aitor_logging,
+    enable_aitor_logging,
+    disable_aitor_logging,
+    is_aitor_logging_enabled,
+    set_aitor_logging
+)
+
 __all__ = [
     # Core Aitor
     "Aitor",
@@ -78,5 +87,12 @@ __all__ = [
     "LLMProvider",
     "BaseLLM",
     "LLMResponse",
-    "LLMMessage"
+    "LLMMessage",
+    
+    # Logging
+    "setup_aitor_logging",
+    "enable_aitor_logging",
+    "disable_aitor_logging",
+    "is_aitor_logging_enabled",
+    "set_aitor_logging"
 ] 

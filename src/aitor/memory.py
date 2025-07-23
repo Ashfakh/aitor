@@ -291,17 +291,39 @@ class ReactMemory:
         with self._lock:
             context_parts = []
             
+            # Conversation history
             if self.conversation_history:
                 context_parts.append("=== CONVERSATION HISTORY ===")
-                context_parts.append(self.get_conversation_context())
+                context_lines = []
+                for msg in self.conversation_history:
+                    role = msg.role.value.upper()
+                    context_lines.append(f"{role}: {msg.content}")
+                context_parts.append("\n".join(context_lines))
             
+            # Reasoning trace
             if self.reasoning_trace:
                 context_parts.append("\n=== REASONING TRACE ===")
-                context_parts.append(self.get_reasoning_context())
+                context_lines = []
+                for step in self.reasoning_trace:
+                    step_type = step.step_type.value.upper()
+                    context_lines.append(f"{step_type}: {step.content}")
+                    
+                    # Add tool result if present
+                    if step.tool_result:
+                        result_status = "SUCCESS" if step.tool_result.success else "FAILED"
+                        context_lines.append(f"  TOOL_RESULT: {step.tool_name} -> {result_status}")
+                context_parts.append("\n".join(context_lines))
             
+            # Tool executions
             if self.tool_executions:
                 context_parts.append("\n=== TOOL EXECUTIONS ===")
-                context_parts.append(self.get_tool_execution_context())
+                context_lines = []
+                for exec in self.tool_executions:
+                    result_summary = "SUCCESS" if exec.result.success else f"ERROR: {exec.result.error}"
+                    context_lines.append(
+                        f"TOOL: {exec.tool_name}({exec.params}) -> {result_summary}"
+                    )
+                context_parts.append("\n".join(context_lines))
             
             return "\n".join(context_parts)
     

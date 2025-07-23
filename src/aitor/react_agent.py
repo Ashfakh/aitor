@@ -34,7 +34,6 @@ class ReactAgent(Aitor[ReactMemory]):
         llm: Optional[BaseLLM] = None,
         llm_manager: Optional[LLMManager] = None,
         tool_registry: Optional[ToolRegistry] = None,
-        system_prompt: Optional[str] = None,
         max_reasoning_steps: int = 20,
         max_errors: int = 3,
         memory_config: Optional[Dict[str, Any]] = None,
@@ -51,10 +50,12 @@ class ReactAgent(Aitor[ReactMemory]):
             llm: Direct LLM instance
             llm_manager: LLM manager for multiple providers
             tool_registry: Tool registry (uses default if None)
-            system_prompt: Custom system prompt
             max_reasoning_steps: Maximum reasoning steps per problem
             max_errors: Maximum errors before stopping
             memory_config: Memory configuration options
+            task_goal: Specific task or goal for the agent
+            agent_role: Role description for the agent
+            additional_instructions: Additional context-specific instructions
         """
         # Initialize memory
         memory_config = memory_config or {}
@@ -83,7 +84,6 @@ class ReactAgent(Aitor[ReactMemory]):
             llm_manager=llm_manager,
             max_reasoning_steps=max_reasoning_steps,
             max_errors=max_errors,
-            system_prompt=system_prompt,
             task_goal=task_goal,
             agent_role=agent_role,
             additional_instructions=additional_instructions
@@ -320,12 +320,14 @@ class ReactAgentBuilder:
         self._llm: Optional[BaseLLM] = None
         self._llm_manager: Optional[LLMManager] = None
         self._tool_registry: Optional[ToolRegistry] = None
-        self._system_prompt: Optional[str] = None
         self._max_reasoning_steps: int = 20
         self._max_errors: int = 3
         self._memory_config: Dict[str, Any] = {}
         self._tools_to_register: List[Tool] = []
         self._functions_to_register: List[Dict[str, Any]] = []
+        self._task_goal: Optional[str] = None
+        self._agent_role: Optional[str] = None
+        self._additional_instructions: Optional[str] = None
     
     def name(self, name: str) -> 'ReactAgentBuilder':
         """Set agent name."""
@@ -352,10 +354,6 @@ class ReactAgentBuilder:
         self._tool_registry = tool_registry
         return self
     
-    def system_prompt(self, system_prompt: str) -> 'ReactAgentBuilder':
-        """Set system prompt."""
-        self._system_prompt = system_prompt
-        return self
     
     def max_reasoning_steps(self, max_steps: int) -> 'ReactAgentBuilder':
         """Set maximum reasoning steps."""
@@ -365,6 +363,21 @@ class ReactAgentBuilder:
     def max_errors(self, max_errors: int) -> 'ReactAgentBuilder':
         """Set maximum errors."""
         self._max_errors = max_errors
+        return self
+    
+    def task_goal(self, task_goal: str) -> 'ReactAgentBuilder':
+        """Set task goal."""
+        self._task_goal = task_goal
+        return self
+    
+    def agent_role(self, agent_role: str) -> 'ReactAgentBuilder':
+        """Set agent role."""
+        self._agent_role = agent_role
+        return self
+    
+    def additional_instructions(self, instructions: str) -> 'ReactAgentBuilder':
+        """Set additional instructions."""
+        self._additional_instructions = instructions
         return self
     
     def memory_config(self, **config) -> 'ReactAgentBuilder':
@@ -401,10 +414,12 @@ class ReactAgentBuilder:
             llm=self._llm,
             llm_manager=self._llm_manager,
             tool_registry=self._tool_registry,
-            system_prompt=self._system_prompt,
             max_reasoning_steps=self._max_reasoning_steps,
             max_errors=self._max_errors,
-            memory_config=self._memory_config
+            memory_config=self._memory_config,
+            task_goal=self._task_goal,
+            agent_role=self._agent_role,
+            additional_instructions=self._additional_instructions
         )
         
         # Register tools

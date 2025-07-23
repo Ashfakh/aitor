@@ -31,7 +31,7 @@ async def math_planning_demo():
         }
     )
     
-    # Create planning agent
+    # Create planning agent with mathematical focus
     tool_registry = ToolRegistry()
     agent = await (PlanningReactAgentBuilder()
                    .name("MathPlanningAgent")
@@ -39,19 +39,6 @@ async def math_planning_demo():
                    .tool_registry(tool_registry)
                    .max_reasoning_steps(25)
                    .max_errors(3)
-                   .system_prompt("""You are a mathematical planning agent that breaks down complex calculations into step-by-step tasks.
-
-Your approach:
-1. PLAN: Analyze the mathematical problem and create ordered calculation steps
-2. EXECUTE: Work through calculations systematically using the calculator tool
-3. VERIFY: Check intermediate results make sense
-4. COMPLETE: Provide the final answer with clear reasoning
-
-Key principles:
-- Break complex math problems into simple calculations
-- Use the calculator tool for all arithmetic operations
-- Show your work step by step
-- Verify results are reasonable""")
                    .build())
     
     # Register only calculator tool for focused demo
@@ -112,62 +99,6 @@ Key principles:
         traceback.print_exc()
     
     return agent
-
-
-async def simple_math_demo():
-    """Simple mathematical planning demo."""
-    print(f"\n{'='*80}")
-    print("SIMPLE MATH PLANNING DEMO")
-    print("="*80)
-    
-    # Setup LLM provider
-    llm_manager = LLMManager(default_provider="openai")
-    llm_manager.add_provider(
-        name="openai",
-        provider="openai",
-        config={
-            "model": "o3-mini",
-            "max_tokens": 1000
-        }
-    )
-    
-    # Create simpler planning agent
-    tool_registry = ToolRegistry()
-    agent = await (PlanningReactAgentBuilder()
-                   .name("SimpleMathAgent")
-                   .llm_manager(llm_manager)
-                   .tool_registry(tool_registry)
-                   .max_reasoning_steps(12)
-                   .build())
-    
-    # Register calculator tool
-    await agent.register_tool(EXAMPLE_TOOLS[0])  # calculator
-    
-    # Simple multi-step problem
-    problem = "Calculate the total cost if I buy 3 items at $24.99 each, 2 items at $15.50 each, apply a 15% discount, then add 8.5% sales tax."
-    
-    print(f"Problem: {problem}")
-    print("-" * 40)
-    
-    try:
-        response = await agent.solve(problem)
-        print(f"Final Answer: {response}")
-        
-        # Show planning breakdown
-        todos = await agent.get_current_todos()
-        print(f"\nCalculation steps planned: {len(todos)}")
-        
-        for todo in todos:
-            status_symbol = "✓" if todo.status == TodoStatus.COMPLETED else "✗" if todo.status == TodoStatus.FAILED else "○"
-            print(f"  {status_symbol} {todo.content}")
-            if todo.result and todo.status == TodoStatus.COMPLETED:
-                print(f"    → {todo.result}")
-            
-    except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
-
 
 async def main():
     """Run mathematical planning demonstrations."""

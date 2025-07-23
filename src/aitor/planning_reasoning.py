@@ -63,8 +63,7 @@ class PlanningReasoningEngine:
         llm: Optional[BaseLLM] = None,
         llm_manager: Optional[LLMManager] = None,
         max_reasoning_steps: int = 50,
-        max_errors: int = 5,
-        system_prompt: Optional[str] = None
+        max_errors: int = 5
     ):
         """
         Initialize planning reasoning engine.
@@ -75,14 +74,12 @@ class PlanningReasoningEngine:
             llm_manager: LLM manager for multiple providers
             max_reasoning_steps: Maximum reasoning steps per problem
             max_errors: Maximum errors before stopping
-            system_prompt: Custom system prompt for the agent
         """
         self.tool_registry = tool_registry
         self.llm = llm
         self.llm_manager = llm_manager
         self.max_reasoning_steps = max_reasoning_steps
         self.max_errors = max_errors
-        self.system_prompt = system_prompt or self._get_default_system_prompt()
         
         # Planning components
         self.todo_manager = TodoManager()
@@ -90,9 +87,16 @@ class PlanningReasoningEngine:
         if not self.llm and not self.llm_manager:
             raise ValueError("Either llm or llm_manager must be provided")
     
-    def _get_default_system_prompt(self) -> str:
-        """Get default system prompt for planning agent."""
-        return """You are an advanced planning agent that efficiently solves problems by creating minimal, focused task breakdowns.
+    def _build_system_prompt(self, agent_name: Optional[str] = None) -> str:
+        """Build system prompt dynamically from tools and instructions."""
+        # Start with agent identity
+        if agent_name:
+            prompt = f"You are {agent_name}, an advanced planning agent that efficiently solves problems by creating minimal, focused task breakdowns."
+        else:
+            prompt = "You are an advanced planning agent that efficiently solves problems by creating minimal, focused task breakdowns."
+        
+        # Add base planning instructions
+        prompt += """
 
 CRITICAL: You MUST respond with valid JSON only when requested. Use the structured format for tool usage.
 
@@ -127,6 +131,40 @@ Key principles:
 - Track progress and adapt plans as needed
 - Provide clear, comprehensive final answers
 - Be systematic but not overly granular in your approach"""
+        
+        # Add available tools information
+        tools_info = self._format_tools_info()
+        if tools_info:
+            prompt += "\n\n" + tools_info
+        
+        return prompt
+    
+    def _format_tools_info(self) -> str:
+        """Format available tools information for LLM."""
+        tools = self.tool_registry.get_all_tools()
+        if not tools:
+            return ""
+        
+        tool_descriptions = []
+        tool_descriptions.append("AVAILABLE TOOLS:")
+        
+        for tool in tools:
+            # Create detailed parameter descriptions
+            params = []
+            if tool.parameters:
+                for param_name, param_info in tool.parameters.items():
+                    if isinstance(param_info, dict):
+                        param_type = param_info.get('type', 'str')
+                        required = param_info.get('required', False)
+                        param_desc = f"{param_name}: {param_type}"
+                        if not required:
+                            param_desc += " (optional)"
+                        params.append(param_desc)
+            
+            param_str = f"({', '.join(params)})" if params else "()"
+            tool_descriptions.append(f"- {tool.name}{param_str}: {tool.description}")
+        
+        return "\n".join(tool_descriptions)
     
     async def solve_problem(self, problem: str, memory: ReactMemory) -> str:
         """
@@ -173,8 +211,12 @@ Guidelines:
 
 Create the minimal necessary todo list."""
 
+        # Build system prompt dynamically with agent name
+        agent_name = memory.agent_name if memory else None
+        system_prompt = self._build_system_prompt(agent_name)
+        
         messages = [
-            LLMMessage("system", "You are a planning agent that creates minimal, efficient task breakdowns."),
+            LLMMessage("system", system_prompt),
             LLMMessage("user", planning_prompt)
         ]
         
@@ -564,11 +606,14 @@ Original problem: {self._get_parent_problem(memory)}
 Provide a clear, comprehensive final answer that addresses the original problem based on the work completed.
 """
         
-        # Generate final answer
-        messages = [LLMMessage("user", final_answer_prompt)]
-        
-        print(f"Final answer prompt=======: {final_answer_prompt}")
-        
+        # Generate final answer with system prompt and agent name
+        agent_name = memory.agent_name if memory else None
+        system_prompt = self._build_system_prompt(agent_name)
+        messages = [
+            LLMMessage("system", system_prompt),
+            LLMMessage("user", final_answer_prompt)
+        ]
+                
         if self.llm:
             response = await self.llm.generate(messages)
         elif self.llm_manager:

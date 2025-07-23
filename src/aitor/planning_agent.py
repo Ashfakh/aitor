@@ -17,7 +17,7 @@ from .todo import TodoManager, TodoItem, TodoStatus
 
 logger = logging.getLogger(__name__)
 
-
+"""THIS AGENT IS WIP. DO NOT USE IT IN PRODUCTION"""
 class PlanningReactAgent(Aitor[ReactMemory]):
     """
     Planning-enabled ReAct Agent with todo management and sub-agents.
@@ -37,7 +37,6 @@ class PlanningReactAgent(Aitor[ReactMemory]):
         llm: Optional[BaseLLM] = None,
         llm_manager: Optional[LLMManager] = None,
         tool_registry: Optional[ToolRegistry] = None,
-        system_prompt: Optional[str] = None,
         max_reasoning_steps: int = 50,
         max_errors: int = 5,
         memory_config: Optional[Dict[str, Any]] = None
@@ -51,7 +50,6 @@ class PlanningReactAgent(Aitor[ReactMemory]):
             llm: Direct LLM instance
             llm_manager: LLM manager for multiple providers
             tool_registry: Tool registry (uses default if None)
-            system_prompt: Custom system prompt
             max_reasoning_steps: Maximum reasoning steps per problem
             max_errors: Maximum errors before stopping
             memory_config: Memory configuration options
@@ -82,8 +80,7 @@ class PlanningReactAgent(Aitor[ReactMemory]):
             llm=llm,
             llm_manager=llm_manager,
             max_reasoning_steps=max_reasoning_steps,
-            max_errors=max_errors,
-            system_prompt=system_prompt
+            max_errors=max_errors
         )
         
         logger.info(f"Initialized PlanningReactAgent: {self.name} (session: {self.memory.session_id})")
@@ -470,7 +467,6 @@ class PlanningReactAgentBuilder:
         self._llm: Optional[BaseLLM] = None
         self._llm_manager: Optional[LLMManager] = None
         self._tool_registry: Optional[ToolRegistry] = None
-        self._system_prompt: Optional[str] = None
         self._max_reasoning_steps: int = 50
         self._max_errors: int = 5
         self._memory_config: Dict[str, Any] = {}
@@ -502,10 +498,6 @@ class PlanningReactAgentBuilder:
         self._tool_registry = tool_registry
         return self
     
-    def system_prompt(self, system_prompt: str) -> 'PlanningReactAgentBuilder':
-        """Set system prompt."""
-        self._system_prompt = system_prompt
-        return self
     
     def max_reasoning_steps(self, max_steps: int) -> 'PlanningReactAgentBuilder':
         """Set maximum reasoning steps."""
@@ -551,7 +543,6 @@ class PlanningReactAgentBuilder:
             llm=self._llm,
             llm_manager=self._llm_manager,
             tool_registry=self._tool_registry,
-            system_prompt=self._system_prompt,
             max_reasoning_steps=self._max_reasoning_steps,
             max_errors=self._max_errors,
             memory_config=self._memory_config
