@@ -285,23 +285,267 @@ print(mermaid_code)
 
 ## 📚 Advanced Usage
 
-### Custom Tool Development
+### Tool Creation Patterns
+
+#### 1. Basic Tool Creation
+```python
+from aitor.tools import tool
+
+@tool(
+    name="calculator",
+    description="Perform mathematical calculations",
+    timeout=10.0,
+    async_execution=True
+)
+def calculate(expression: str) -> float:
+    """Calculate the result of a mathematical expression."""
+    return eval(expression)
+```
+
+#### 2. Tools with Pre-configured Parameters
+For scenarios where you need to pass static parameters (like tenant details) that the agent doesn't provide:
+
+```python
+from aitor.tools import tool
+
+def create_database_tool(tenant_id: str, connection_string: str):
+    """Factory function to create tenant-specific database tool."""
+    
+    @tool(
+        name=f"database_query_{tenant_id}",
+        description=f"Query database for tenant {tenant_id}"
+    )
+    def query_database(query: str) -> dict:
+        """Execute database query with pre-configured tenant."""
+        # tenant_id and connection_string are captured from closure
+        return execute_query(connection_string, tenant_id, query)
+    
+    return query_database
+
+# Usage during agent creation
+tenant_db_tool = create_database_tool("tenant_123", "postgresql://...")
+```
+
+#### 3. Using functools.partial for Parameter Binding
+```python
+from functools import partial
+from aitor.tools import tool
+
+def database_operation(tenant_id: str, api_key: str, query: str) -> dict:
+    """Base database function with all parameters."""
+    return {
+        "tenant": tenant_id,
+        "query": query,
+        "result": f"Query executed for {tenant_id}"
+    }
+
+# Create tenant-specific tool using partial
+tenant_specific_db = partial(
+    database_operation, 
+    tenant_id="tenant_123", 
+    api_key="secret_key"
+)
+
+@tool(name="tenant_database", description="Query database for current tenant")
+def tenant_db_tool(query: str) -> dict:
+    return tenant_specific_db(query=query)
+```
+
+#### 4. Custom Tool Class with Context
 ```python
 from aitor.tools import Tool
-import asyncio
+from typing import Any, Dict
 
-class DatabaseTool(Tool):
-    def __init__(self, db_connection):
-        super().__init__(
-            name="database",
-            func=self.query_database,
-            description="Execute database queries"
-        )
-        self.db = db_connection
+class TenantTool:
+    """Tool with pre-configured tenant parameters."""
     
-    async def query_database(self, query: str) -> list:
-        # Async database operations
-        return await self.db.execute(query)
+    def __init__(self, tenant_id: str, api_key: str, base_url: str):
+        self.tenant_id = tenant_id
+        self.api_key = api_key
+        self.base_url = base_url
+    
+    def search_documents(self, query: str, limit: int = 10) -> dict:
+        """Search documents for this tenant."""
+        return {
+            "tenant": self.tenant_id,
+            "query": query,
+            "limit": limit,
+            "results": f"Documents for {self.tenant_id}"
+        }
+    
+    def create_tool(self) -> Tool:
+        """Create the tool instance."""
+        return Tool(
+            name=f"search_docs_{self.tenant_id}",
+            func=self.search_documents,
+            description=f"Search documents for tenant {self.tenant_id}",
+            timeout=30.0
+        )
+
+# Usage
+tenant_tool_factory = TenantTool("tenant_123", "api_key", "https://api.example.com")
+search_tool = tenant_tool_factory.create_tool()
+```
+
+#### 5. Environment/Context-Based Configuration
+```python
+from aitor.tools import tool
+from dataclasses import dataclass
+
+@dataclass
+class TenantContext:
+    tenant_id: str
+    database_url: str
+    api_key: str
+    storage_bucket: str
+
+def create_tenant_tools(context: TenantContext):
+    """Create all tools for a specific tenant context."""
+    
+    @tool(name="fetch_user_data", description="Fetch user data for tenant")
+    def fetch_user_data(user_id: str) -> dict:
+        # context is captured in closure
+        return fetch_from_db(context.database_url, context.tenant_id, user_id)
+    
+    @tool(name="upload_file", description="Upload file to tenant storage")
+    def upload_file(file_name: str, content: str) -> str:
+        return upload_to_storage(context.storage_bucket, context.tenant_id, file_name, content)
+    
+    @tool(name="send_notification", description="Send notification via tenant API")
+    def send_notification(message: str, recipient: str) -> bool:
+        return send_via_api(context.api_key, context.tenant_id, message, recipient)
+    
+    return [fetch_user_data, upload_file, send_notification]
+
+# Usage
+tenant_context = TenantContext(
+    tenant_id="tenant_123",
+    database_url="postgresql://...",
+    api_key="secret_123",
+    storage_bucket="tenant-123-files"
+)
+
+tools = create_tenant_tools(tenant_context)
+
+# Register all tenant tools with agent
+for tool in tools:
+    await agent.register_tool(tool)
+```
+
+#### 6. Complete Tenant-Specific Agent Example
+```python
+from aitor import create_react_agent
+from aitor.tools import tool
+
+class CustomerServiceAgent:
+    def __init__(self, tenant_id: str, customer_db_url: str, support_api_key: str):
+        self.tenant_id = tenant_id
+        self.customer_db_url = customer_db_url
+        self.support_api_key = support_api_key
+    
+    def create_tools(self):
+        """Create tenant-specific tools."""
+        
+        @tool(name="lookup_customer", description="Look up customer information")
+        def lookup_customer(customer_id: str) -> dict:
+            return query_customer_db(self.customer_db_url, self.tenant_id, customer_id)
+        
+        @tool(name="create_ticket", description="Create support ticket")
+        def create_ticket(title: str, description: str, priority: str = "medium") -> str:
+            return create_support_ticket(
+                self.support_api_key, 
+                self.tenant_id, 
+                title, 
+                description, 
+                priority
+            )
+        
+        @tool(name="get_billing_info", description="Get customer billing information")
+        def get_billing_info(customer_id: str) -> dict:
+            return get_billing_data(self.customer_db_url, self.tenant_id, customer_id)
+        
+        return [lookup_customer, create_ticket, get_billing_info]
+    
+    async def create_agent(self, llm_manager):
+        """Create the complete agent with tenant-specific tools."""
+        tools = self.create_tools()
+        
+        agent = await create_react_agent(
+            name=f"CustomerServiceAgent_{self.tenant_id}",
+            llm_manager=llm_manager,
+            tools=tools,
+            agent_role="customer service representative",
+            additional_instructions=f"You are helping customers for tenant {self.tenant_id}"
+        )
+        
+        return agent
+
+# Usage
+cs_agent_factory = CustomerServiceAgent(
+    tenant_id="acme_corp",
+    customer_db_url="postgresql://...",
+    support_api_key="support_key_123"
+)
+
+agent = await cs_agent_factory.create_agent(llm_manager)
+```
+
+#### Key Benefits of Pre-configured Tools:
+- **Security**: Sensitive credentials are encapsulated and not exposed to the agent
+- **Simplicity**: Agent only needs to pass business logic parameters
+- **Tenant Isolation**: Each agent instance is pre-configured for specific tenant
+- **Reusability**: Factory pattern allows creating multiple tenant-specific agents
+- **Type Safety**: Pre-configured parameters are validated at creation time
+
+### Avoiding Tool Registry Conflicts
+
+When creating multiple agents, ensure each has its own tool registry to prevent "Tool already registered" errors:
+
+```python
+from aitor import ReactAgentBuilder
+from aitor.tools import ToolRegistry
+
+# Method 1: Explicit tool registry per agent
+def create_agent_with_tools(tenant_id: str):
+    # Create fresh tool registry for this agent
+    tool_registry = ToolRegistry()
+    
+    # Create tenant-specific tools
+    @tool(name="lookup_info", description=f"Look up info for {tenant_id}")
+    def lookup_info(query: str) -> dict:
+        return get_tenant_info(tenant_id, query)
+    
+    # Build agent with explicit registry
+    agent = await (ReactAgentBuilder()
+                   .name(f"Agent_{tenant_id}")
+                   .tool_registry(tool_registry)  # Explicit registry
+                   .add_tool(lookup_info)
+                   .build())
+    
+    return agent
+
+# Method 2: Using builder pattern (recommended)
+async def create_isolated_agents():
+    # Each agent gets its own tool registry automatically
+    agent1 = await (ReactAgentBuilder()
+                    .name("Agent1")
+                    .add_tool(create_lookup_tool("tenant1"))
+                    .build())
+    
+    agent2 = await (ReactAgentBuilder()
+                    .name("Agent2") 
+                    .add_tool(create_lookup_tool("tenant2"))  # Same tool name, different registry
+                    .build())
+    
+    return agent1, agent2
+
+# Method 3: Factory pattern with unique tool names
+def create_unique_tools(tenant_id: str):
+    @tool(name=f"lookup_info_{tenant_id}", description=f"Look up info for {tenant_id}")
+    def lookup_info(query: str) -> dict:
+        return get_tenant_info(tenant_id, query)
+    
+    return lookup_info
 ```
 
 ### Memory Persistence

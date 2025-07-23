@@ -11,7 +11,7 @@ from .aitor import Aitor
 from .llm import BaseLLM, LLMManager
 from .memory import ReactMemory, MessageRole
 from .reasoning import ReasoningEngine
-from .tools import ToolRegistry, Tool, default_registry
+from .tools import ToolRegistry, Tool
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class ReactAgent(Aitor[ReactMemory]):
         )
 
         # Initialize components
-        self.tool_registry = tool_registry or default_registry
+        self.tool_registry = tool_registry or ToolRegistry()
         self.llm = llm
         self.llm_manager = llm_manager
 

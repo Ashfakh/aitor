@@ -3,13 +3,14 @@ ReAct Agent Demo - Complete examples showcasing the framework capabilities.
 """
 
 import asyncio
+from aitor.logging_config import setup_aitor_logging
 from aitor.react_agent import ReactAgentBuilder
 from aitor.llm import LLMManager
 from aitor.tools import ToolRegistry
 from example_tools import EXAMPLE_TOOLS
 
 # Setup enhanced logging
-# setup_aitor_logging("INFO")
+setup_aitor_logging("INFO")
 # Optional: Disable verbose logging
 # disable_aitor_logging()
 
