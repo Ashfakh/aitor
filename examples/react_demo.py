@@ -6,7 +6,6 @@ import asyncio
 from aitor.react_agent import ReactAgentBuilder
 from aitor.llm import LLMManager
 from aitor.tools import ToolRegistry
-from aitor.logging_config import setup_aitor_logging, disable_aitor_logging, enable_aitor_logging
 from example_tools import EXAMPLE_TOOLS
 
 # Setup enhanced logging

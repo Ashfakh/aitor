@@ -107,10 +107,7 @@ async def main():
     
     try:
         # Run focused math planning demo
-        # agent = await math_planning_demo()
-        
-        # Run simple demo
-        await simple_math_demo()
+        await math_planning_demo()
         
         print(f"\n{'='*80}")
         print("🎉 Mathematical planning demos completed!")
