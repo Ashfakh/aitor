@@ -62,11 +62,23 @@ jobs:
       with:
         name: python-package-distributions
         path: dist/
-    - name: Upload to release
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
+  publish-to-pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/aitor
+    permissions:
+      id-token: write
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
       with:
-        files: |
-          dist/*.whl
-          dist/*.tar.gz
-        token: ${{ secrets.GITHUB_TOKEN }} 
+        name: python-package-distributions
+        path: dist/
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }} 
