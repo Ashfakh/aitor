@@ -128,7 +128,7 @@ For providing the final answer:
 
 Important:
 - Be thorough in your thinking before taking actions
-- Always use tools when you need specific information or to perform tasks
+- Always use tools when you need specific information or to perform tasks. If there is an appropriate tool, use it directly without thinking of using it.
 - Analyze observations carefully before proceeding
 - Provide a clear, complete final answer when you have enough information
 - If you encounter errors, adapt your approach and try alternatives
